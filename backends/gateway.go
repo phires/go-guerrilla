@@ -10,9 +10,9 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/flashmob/go-guerrilla/log"
-	"github.com/flashmob/go-guerrilla/mail"
-	"github.com/flashmob/go-guerrilla/response"
+	"github.com/phires/go-guerrilla/log"
+	"github.com/phires/go-guerrilla/mail"
+	"github.com/phires/go-guerrilla/response"
 )
 
 var ErrProcessorNotFound error

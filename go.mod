@@ -4,7 +4,6 @@ go 1.21.0
 
 require (
 	github.com/asaskevich/EventBus v0.0.0-20180103000110-68a521d7cbbb
-	github.com/flashmob/go-guerrilla v1.6.1
 	github.com/go-sql-driver/mysql v1.4.1
 	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/sirupsen/logrus v1.4.2

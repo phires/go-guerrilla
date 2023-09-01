@@ -1,9 +1,10 @@
 package encoding
 
 import (
-	"github.com/flashmob/go-guerrilla/mail"
 	"strings"
 	"testing"
+
+	"github.com/phires/go-guerrilla/mail"
 )
 
 // This will use the golang.org/x/net/html/charset encoder

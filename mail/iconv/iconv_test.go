@@ -1,9 +1,10 @@
 package iconv
 
 import (
-	"github.com/flashmob/go-guerrilla/mail"
 	"strings"
 	"testing"
+
+	"github.com/phires/go-guerrilla/mail"
 )
 
 // This will use the iconv encoder

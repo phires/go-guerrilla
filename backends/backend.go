@@ -3,13 +3,14 @@ package backends
 import (
 	"bytes"
 	"fmt"
-	"github.com/flashmob/go-guerrilla/log"
-	"github.com/flashmob/go-guerrilla/mail"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/phires/go-guerrilla/log"
+	"github.com/phires/go-guerrilla/mail"
 )
 
 var (

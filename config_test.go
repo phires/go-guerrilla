@@ -1,19 +1,19 @@
 package guerrilla
 
 import (
-	"github.com/flashmob/go-guerrilla/backends"
-	"github.com/flashmob/go-guerrilla/log"
-	"github.com/flashmob/go-guerrilla/tests/testcert"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/phires/go-guerrilla/backends"
+	"github.com/phires/go-guerrilla/log"
+	"github.com/phires/go-guerrilla/tests/testcert"
 )
 
 // a configuration file with a dummy backend
 
-//
 var configJsonA = `
 {
     "log_file" : "./tests/testlog",

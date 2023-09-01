@@ -5,9 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/flashmob/go-guerrilla"
 	"net"
 	"time"
+
+	"github.com/phires/go-guerrilla"
 )
 
 func Connect(serverConfig guerrilla.ServerConfig, deadline time.Duration) (net.Conn, *bufio.Reader, error) {

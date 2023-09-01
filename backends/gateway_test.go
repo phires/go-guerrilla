@@ -2,11 +2,12 @@ package backends
 
 import (
 	"fmt"
-	"github.com/flashmob/go-guerrilla/log"
-	"github.com/flashmob/go-guerrilla/mail"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/phires/go-guerrilla/log"
+	"github.com/phires/go-guerrilla/mail"
 )
 
 func TestStates(t *testing.T) {

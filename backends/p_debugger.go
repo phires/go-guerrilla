@@ -1,9 +1,10 @@
 package backends
 
 import (
-	"github.com/flashmob/go-guerrilla/mail"
 	"strings"
 	"time"
+
+	"github.com/phires/go-guerrilla/mail"
 )
 
 // ----------------------------------------------------------------------------------

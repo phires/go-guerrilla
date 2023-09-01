@@ -1,12 +1,13 @@
 package backends
 
 import (
-	"github.com/flashmob/go-guerrilla/log"
-	"github.com/flashmob/go-guerrilla/mail"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/phires/go-guerrilla/log"
+	"github.com/phires/go-guerrilla/mail"
 )
 
 func TestRedisGeneric(t *testing.T) {

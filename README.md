@@ -53,7 +53,7 @@ Reload TLS configuration, change most other settings on the fly.
 - Can be [used as a package](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package) in your Go project. 
 Get started in just a few lines of code!
 - [Fuzz tested](https://github.com/phires/go-guerrilla/wiki/Fuzz-testing). 
-[Auto-tested](https://travis-ci.org/flashmob/go-guerrilla). Battle Tested.
+[Auto-tested](https://travis-ci.org/phires/go-guerrilla). Battle Tested.
 
 #### Backend Features
 
@@ -125,7 +125,7 @@ Go-Guerrilla can be imported and used as a package in your Go project.
 #### 1. Import the guerrilla package
 ```go
 import (
-    "github.com/flashmob/go-guerrilla"
+    "github.com/phires/go-guerrilla"
 )
 
 
