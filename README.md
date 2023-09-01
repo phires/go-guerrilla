@@ -75,11 +75,7 @@ Getting started
 
 #### Dependencies
 
-Go-Guerrilla uses [Dep](https://golang.github.io/dep/) to manage 
-dependencies. If you have dep installed, just run `dep ensure` as usual.
- 
-You can also run `$ go get ./..` if you don't want to use dep, and then run `$ make test`
-to ensure all is good.
+Go-Guerrilla uses Go Modules for dependency management.
 
 To build the binary run:
 
