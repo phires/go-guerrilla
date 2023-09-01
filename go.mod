@@ -1,6 +1,6 @@
 module github.com/phires/go-guerrilla
 
-go 1.21.0
+go 1.21
 
 require (
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
