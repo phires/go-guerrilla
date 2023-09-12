@@ -1,7 +1,7 @@
 package response
 
 import (
-	"math/rand"
+	"math/rand" //#nosec
 	"time"
 )
 
@@ -154,6 +154,8 @@ var quotes = struct {
 
 // GetQuote returns a random quote from The big Lebowski
 func GetQuote() string {
-	rand.Seed(time.Now().UnixNano())
-	return quotes.m[rand.Intn(len(quotes.m))]
+	// It's not worth to change math/rand to crypto/rand for this
+	/* #nosec */
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return quotes.m[r.Intn(len(quotes.m))]
 }
