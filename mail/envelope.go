@@ -3,7 +3,7 @@ package mail
 import (
 	"bufio"
 	"bytes"
-	"crypto/md5"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -159,9 +159,16 @@ func NewEnvelope(remoteAddr string, clientID uint64) *Envelope {
 	}
 }
 
+// queuedID generates a unique id for the email
+// It's a sha256 hash of the current unix timestamp and the clientID
+// The clientID is used to ensure that the id is unique when multiple clients are sending emails at the same time
+// The timestamp is used to ensure that the id is unique when multiple emails are sent by the same client at the same time
+// We're using the last 12 chars of the sha256 hash, as this should be enough to ensure uniqueness
 func queuedID(clientID uint64) string {
 	var queueID = fmt.Sprintf("%x%x", time.Now().Unix(), clientID)
-	return fmt.Sprintf("%x", md5.Sum([]byte(queueID)))
+	// get the last 6 bytes of the sha256 hash (12 chars)
+	var hash = sha256.Sum256([]byte(queueID))
+	return fmt.Sprintf("%x", hash[len(hash)-6:])
 }
 
 // ParseHeaders parses the headers into Header field of the Envelope struct.

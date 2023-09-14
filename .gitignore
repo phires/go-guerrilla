@@ -7,3 +7,4 @@ go-guerrilla.wiki
 goguerrilla.conf.api
 tests/pidfilex.pid
 tests/testlog*
+*.pem
