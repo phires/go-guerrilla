@@ -10,7 +10,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     container:
-      image: goreleaser/goreleaser-cross:v1.21
+      image: goreleaser/goreleaser-cross:v1.22
     steps:
       - run: |
           git config --global --add safe.directory /__w/go-guerrilla/go-guerrilla
