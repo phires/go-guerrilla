@@ -9,7 +9,7 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.arch={{.Arch}}
     goos:
       - linux
-      - windows
+      #- windows
     goarch:
       - arm
       - arm64
@@ -26,17 +26,17 @@ builds:
         goarch: arm
       - goos: windows
         goarch: arm64
-    main: .
-    binary: auth-socket
+    main: ./cmd/guerrillad
+    binary: guerrillad
 universal_binaries:
-  - name_template: "go-guerrilla"
+  - name_template: "guerrillad"
     replace: false
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  name_template: "go-guerrilla"
+  name_template: "guerrillad"
 archives:
-  - name_template: "go-guerrilla_{{ .Os }}_{{ .Arch }}"
+  - name_template: "guerrillad_{{ .Os }}_{{ .Arch }}"
     format: zip
     files:
       - none*
