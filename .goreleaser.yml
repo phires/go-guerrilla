@@ -1,0 +1,53 @@
+before:
+  hooks:
+    - go mod tidy -v
+builds:
+  - id: universal
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.arch={{.Arch}}
+    goos:
+      - linux
+      #- windows
+    goarch:
+      - arm
+      - arm64
+      #- 386
+      - amd64
+      - mips
+      #- mipsle
+      - s390x
+      - riscv64
+    gomips:
+      - softfloat
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+    main: ./cmd/guerrillad
+    binary: guerrillad
+universal_binaries:
+  - name_template: "guerrillad"
+    replace: false
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  name_template: "guerrillad"
+archives:
+  - name_template: "guerrillad_{{ .Os }}_{{ .Arch }}"
+    format: zip
+    files:
+      - none*
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore"
+      - Merge pull request
+      - Merge branch
+      - go mod tidy
+      - New translations
