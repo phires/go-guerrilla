@@ -29,7 +29,7 @@ func init() {
 	Dec = mime.WordDecoder{}
 }
 
-const maxHeaderChunk = 1 + (4 << 10) // 4KB
+const maxHeaderChunk = 1 + (10240 << 10) // 10MB
 
 // Address encodes an email address of the form `<user@host>`
 type Address struct {

@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -124,6 +125,58 @@ func TestEnvelope(t *testing.T) {
 		return
 	}
 	if e.Subject != "Test" {
+		t.Error("Subject expecting: Test, got:", e.Subject)
+	}
+
+}
+
+// TestEnvelopeLargeHeader is a test function that tests the behavior of the Envelope struct when handling large headers.
+//
+// It creates a new Envelope instance with a remote address and client ID, sets various properties of the Envelope,
+// adds a recipient email address, and writes a large header (about 11MiB) to the Data buffer. It then creates a delivery header
+// and parses the headers of the Envelope. Finally, it checks if the Subject of the Envelope is correct.
+//
+// Parameters:
+// - t: A testing.T object for running the test and reporting any failures.
+//
+// Returns: None.
+func TestEnvelopeLargeHeader(t *testing.T) {
+	e := NewEnvelope("127.0.0.1", 22)
+
+	e.QueuedId = "abc123"
+	e.Helo = "helo.example.com"
+	e.MailFrom = Address{User: "test", Host: "example.com"}
+	e.TLS = true
+	e.RemoteIP = "222.111.233.121"
+	to := Address{User: "test", Host: "example.com"}
+	e.PushRcpt(to)
+	if to.String() != "test@example.com" {
+		t.Error("to does not equal test@example.com, it was:", to.String())
+	}
+	header := ""
+	for i := 0; i < 17; i++ {
+		header += fmt.Sprintf("%sX-Dummy%d: %s\n", header, i, strings.Repeat("n", 68))
+	}
+	header += "Subject: Large Header Test"
+	fmt.Printf("Header length: %dKiB / %dMiB\n", len(header)/1024, len(header)/1024/1024)
+
+	e.Data.WriteString(fmt.Sprintf("%s\n\nHello Test", header))
+
+	addHead := "Delivered-To: " + to.String() + "\n"
+	addHead += "Received: from " + e.Helo + " (" + e.Helo + "  [" + e.RemoteIP + "])\n"
+	e.DeliveryHeader = addHead
+
+	r := e.NewReader()
+
+	data, _ := io.ReadAll(r)
+	if len(data) != e.Len() {
+		t.Error("e.Len() is incorrect, it shown ", e.Len(), " but we wanted ", len(data))
+	}
+	if err := e.ParseHeaders(); err != nil && err != io.EOF {
+		t.Error("cannot parse headers:", err)
+		return
+	}
+	if e.Subject != "Large Header Test" {
 		t.Error("Subject expecting: Test, got:", e.Subject)
 	}
 
