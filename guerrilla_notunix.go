@@ -1,9 +1,5 @@
-// +build !darwin
-// +build !dragonfly
-// +build !freebsd
-// +build !linux
-// +build !netbsd
-// +build !openbsd
+//go:build !darwin && !dragonfly && !freebsd && !linux && !netbsd && !openbsd
+// +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd
 
 package guerrilla
 

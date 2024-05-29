@@ -7,8 +7,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -157,7 +157,7 @@ func (s *server) configureTLS() error {
 			}
 		}
 		if len(sConfig.TLS.RootCAs) > 0 {
-			caCert, err := ioutil.ReadFile(sConfig.TLS.RootCAs)
+			caCert, err := os.ReadFile(sConfig.TLS.RootCAs)
 			if err != nil {
 				s.log().WithError(err).Errorf("failed opening TLSRootCAs file [%s]", sConfig.TLS.RootCAs)
 			} else {
@@ -172,7 +172,8 @@ func (s *server) configureTLS() error {
 				tlsConfig.ClientAuth = ca
 			}
 		}
-		tlsConfig.PreferServerCipherSuites = sConfig.TLS.PreferServerCipherSuites
+		// Deprecated TLS 1.3
+		//tlsConfig.PreferServerCipherSuites = sConfig.TLS.PreferServerCipherSuites
 		tlsConfig.Rand = rand.Reader
 		s.tlsConfigStore.Store(tlsConfig)
 	}

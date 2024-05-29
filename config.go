@@ -124,6 +124,14 @@ var TLSCiphers = map[string]uint16{
 	"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384":   tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 	"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384": tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 
+	// Ciphersuites added since Go 1.8
+	"TLS_RSA_WITH_AES_128_CBC_SHA256":         tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
+	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256": tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256":   tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+	"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256":   tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305":    tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+	"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305":  tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+
 	// see tls_go1.13 for new TLS 1.3 ciphersuites
 	// Note that TLS 1.3 ciphersuites are not configurable
 }
@@ -133,6 +141,7 @@ var TLSProtocols = map[string]uint16{
 	"tls1.0": tls.VersionTLS10,
 	"tls1.1": tls.VersionTLS11,
 	"tls1.2": tls.VersionTLS12,
+	// see tls_go1.13 for TLS 1.3 implementation
 }
 
 // https://golang.org/pkg/crypto/tls/#CurveID
@@ -140,6 +149,9 @@ var TLSCurves = map[string]tls.CurveID{
 	"P256": tls.CurveP256,
 	"P384": tls.CurveP384,
 	"P521": tls.CurveP521,
+
+	// Curves added since Go 1.8
+	"X25519": tls.X25519,
 }
 
 // https://golang.org/pkg/crypto/tls/#ClientAuthType
