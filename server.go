@@ -67,6 +67,14 @@ type allowedHosts struct {
 	sync.Mutex                 // guard access to the map
 }
 
+type greeterData struct {
+	Hostname           string
+	Version            string
+	ClientID           uint64
+	ActiveClientsCount int
+	Time               string
+}
+
 type command []byte
 
 var (
@@ -369,9 +377,16 @@ func (s *server) handleClient(client *client) {
 	s.log().Infof("Handle client [%s], id: %d", client.RemoteIP, client.ID)
 
 	// Initial greeting
-	greeting := fmt.Sprintf("220 %s SMTP Guerrilla(%s) #%d (%d) %s",
-		sc.Hostname, Version, client.ID,
-		s.clientPool.GetActiveClientsCount(), time.Now().Format(time.RFC3339))
+	greeterData := greeterData{
+		Hostname:           sc.Hostname,
+		Version:            Version,
+		ClientID:           client.ID,
+		ActiveClientsCount: s.clientPool.GetActiveClientsCount(),
+		Time:               time.Now().Format(time.RFC3339),
+	}
+
+	var greeting bytes.Buffer
+	sc.GreeterTemplate.Execute(&greeting, greeterData)
 
 	helo := fmt.Sprintf("250 %s Hello", sc.Hostname)
 	// ehlo is a multi-line reply and need additional \r\n at the end
@@ -406,7 +421,7 @@ func (s *server) handleClient(client *client) {
 	for client.isAlive() {
 		switch client.state {
 		case ClientGreeting:
-			client.sendResponse(greeting)
+			client.sendResponse(greeting.String())
 			client.state = ClientCmd
 		case ClientCmd:
 			client.bufin.setLimit(CommandLineMaxLength)
