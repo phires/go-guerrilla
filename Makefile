@@ -23,8 +23,7 @@ guerrillad:
 	# Build for different architectures
 	$(GO_VARS) GOOS=linux GOARCH=amd64 $(GO) build -o="dist/linux/amd64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
 	$(GO_VARS) GOOS=linux GOARCH=arm64 $(GO) build -o="dist/linux/arm64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
-	# Windows is currently failing
-	# $(GO_VARS) GOOS=windows GOARCH=amd64 $(GO) build -o="dist/windows/amd64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
+	$(GO_VARS) GOOS=windows GOARCH=amd64 $(GO) build -o="dist/windows/amd64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
 
 	# Build the binary for current platform (as before) to not break any existing build processes
 	$(GO_VARS) $(GO) build -o="dist/windows/amd64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
