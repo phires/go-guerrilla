@@ -14,13 +14,20 @@ help:
 	@echo "  test         to run unittests"
 
 clean:
-	rm -f guerrillad
+	rm -rf dist/*
 
 vendor:
 	dep ensure
 
 guerrillad:
-	$(GO_VARS) $(GO) build -o="guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
+	# Build for different architectures
+	$(GO_VARS) GOOS=linux GOARCH=amd64 $(GO) build -o="dist/linux/amd64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
+	$(GO_VARS) GOOS=linux GOARCH=arm64 $(GO) build -o="dist/linux/arm64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
+	# Windows is currently failing
+	# $(GO_VARS) GOOS=windows GOARCH=amd64 $(GO) build -o="dist/windows/amd64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
+
+	# Build the binary for current platform (as before) to not break any existing build processes
+	$(GO_VARS) $(GO) build -o="dist/windows/amd64/guerrillad" -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad
 
 guerrilladrace:
 	$(GO_VARS) $(GO) build -o="guerrillad" -race -ldflags="$(LD_FLAGS)" $(ROOT)/cmd/guerrillad

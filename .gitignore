@@ -1,7 +1,7 @@
 .idea
 goguerrilla.conf
 goguerrilla.conf.json
-/guerrillad
+dist
 vendor
 go-guerrilla.wiki
 goguerrilla.conf.api
