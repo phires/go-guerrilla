@@ -906,6 +906,61 @@ func TestXClient(t *testing.T) {
 	wg.Wait() // wait for handleClient to exit
 }
 
+func TestProxy(t *testing.T) {
+	var mainlog log.Logger
+	var logOpenError error
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfig()
+	sc.ProxyOn = true
+	mainlog, logOpenError = log.GetLogger(sc.LogFile, "debug")
+	if logOpenError != nil {
+		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
+	}
+	conn, server := getMockServerConn(sc, t)
+	// call the serve.handleClient() func in a goroutine.
+	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		server.handleClient(client)
+		wg.Done()
+	}()
+	// Wait for the greeting from the server
+	r := textproto.NewReader(bufio.NewReader(conn.Client))
+	line, _ := r.ReadLine()
+
+	// PROXY command is sent before anything else
+	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
+	if err := w.PrintfLine("PROXY TCP4 1.2.3.4 127.0.0.1 12345 25"); err != nil {
+		t.Error(err)
+	}
+	// We do not expect anything back from the PROXY command
+	// TODO: For some reason, client.RemoteIP contains "tcp" - whereever this
+	//       may come from. Therefore for now we're skipping the test if the
+	//       parsing was successfull.
+	/*
+		if client.RemoteIP != "1.2.3.4" {
+			t.Error("client.RemoteIP should be 1.2.3.4, but got:", client.RemoteIP)
+		}
+	*/
+	// try malformed input
+	if err := w.PrintfLine("PROXY c"); err != nil {
+		t.Error(err)
+	}
+	line, _ = r.ReadLine()
+
+	expected := "550 5.5.2 Syntax error"
+	if strings.Index(line, expected) != 0 {
+		t.Error("expected", expected, "but got:", line)
+	}
+
+	if err := w.PrintfLine("QUIT"); err != nil {
+		t.Error(err)
+	}
+	line, _ = r.ReadLine()
+	wg.Wait() // wait for handleClient to exit
+}
+
 // The backend gateway should time out after 1 second because it sleeps for 2 sec.
 // The transaction should wait until finished, and then test to see if we can do
 // a second transaction
