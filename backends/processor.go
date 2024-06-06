@@ -9,6 +9,7 @@ type SelectTask int
 const (
 	TaskSaveMail SelectTask = iota
 	TaskValidateRcpt
+	TaskSecurityChecks
 )
 
 func (o SelectTask) String() string {
@@ -17,6 +18,8 @@ func (o SelectTask) String() string {
 		return "save mail"
 	case TaskValidateRcpt:
 		return "validate recipient"
+	case TaskSecurityChecks:
+		return "check security"
 	}
 	return "[unnamed task]"
 }

@@ -68,7 +68,7 @@ func sigHandler() {
 		syscall.SIGQUIT,
 		syscall.SIGINT,
 		syscall.SIGKILL,
-		syscall.SIGUSR1,
+		//syscall.SIGUSR1,
 		os.Kill,
 	)
 	for sig := range signalChannel {
@@ -78,10 +78,10 @@ func sigHandler() {
 			} else {
 				mainlog.WithError(err).Error("Could not reload config")
 			}
-		} else if sig == syscall.SIGUSR1 {
+			/* } else if sig == syscall.SIGUSR1 {
 			if err := d.ReopenLogs(); err != nil {
 				mainlog.WithError(err).Error("reopening logs failed")
-			}
+			} */
 		} else if sig == syscall.SIGTERM || sig == syscall.SIGQUIT || sig == syscall.SIGINT || sig == os.Kill {
 			mainlog.Infof("Shutdown signal caught")
 			go func() {
