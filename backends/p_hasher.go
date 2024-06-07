@@ -1,11 +1,13 @@
 package backends
 
 import (
-	"crypto/md5"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/blake2s"
 
 	"github.com/phires/go-guerrilla/mail"
 )
@@ -13,7 +15,7 @@ import (
 // ----------------------------------------------------------------------------------
 // Processor Name: hasher
 // ----------------------------------------------------------------------------------
-// Description   : Generates a unique md5 checksum id for an email
+// Description   : Generates a unique blake2s-128 checksum id for an email
 // ----------------------------------------------------------------------------------
 // Config Options: None
 // --------------:-------------------------------------------------------------------
@@ -38,7 +40,11 @@ func Hasher() Decorator {
 
 			if task == TaskSaveMail {
 				// base hash, use subject from and timestamp-nano
-				h := md5.New()
+				// We are using Blake2s-128 to keep the hash 128bit log, as the MD5 hash before
+				// For the key we are using 64 bit random data
+				randData := make([]byte, 8)
+				rand.Read(randData)
+				h, _ := blake2s.New128(randData)
 				ts := fmt.Sprintf("%d", time.Now().UnixNano())
 				_, _ = io.Copy(h, strings.NewReader(e.MailFrom.String()))
 				_, _ = io.Copy(h, strings.NewReader(e.Subject))
