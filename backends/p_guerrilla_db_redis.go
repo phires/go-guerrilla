@@ -3,10 +3,11 @@ package backends
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"io"
-	"math/rand"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -267,7 +268,8 @@ func (g *GuerrillaDBAndRedisBackend) insertQueryBatcher(
 		vals = nil
 		count = 0
 	}
-	rand.Seed(time.Now().UnixNano())
+	// No seeding needed for crypto/rand
+	//rand.Seed(time.Now().UnixNano())
 	defer func() {
 		if r := recover(); r != nil {
 			Log().Error("insertQueryBatcher caught a panic", r, string(debug.Stack()))
@@ -325,7 +327,7 @@ func (g *GuerrillaDBAndRedisBackend) sqlConnect() (*sql.DB, error) {
 		return nil, err
 	} else {
 		// do we have access?
-		_, err = db.Query("SELECT mail_id FROM " + g.config.Table + " LIMIT 1")
+		_, err = db.Query(fmt.Sprintf("SELECT mail_id FROM %s LIMIT 1", g.config.Table))
 		if err != nil {
 			Log().Error("cannot select table:", err)
 			return nil, err
@@ -335,7 +337,7 @@ func (g *GuerrillaDBAndRedisBackend) sqlConnect() (*sql.DB, error) {
 }
 
 func (c *redisClient) redisConnection(redisInterface string) (err error) {
-	if c.isConnected == false {
+	if !c.isConnected {
 		c.conn, err = RedisDialer("tcp", redisInterface)
 		if err != nil {
 			// handle error
@@ -484,7 +486,13 @@ func GuerrillaDbRedis() Decorator {
 					trimToLimit(e.MailFrom.String(), 255),
 					e.TLS)
 				// give the values to a random query batcher
-				feeders[rand.Intn(len(feeders))] <- vals
+				var index int
+				err := binary.Read(rand.Reader, binary.LittleEndian, &index)
+				if err != nil {
+					panic(err)
+				}
+				index %= len(feeders)
+				feeders[index] <- vals
 				return p.Process(e, task)
 
 			} else {
