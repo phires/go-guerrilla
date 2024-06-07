@@ -153,25 +153,7 @@ func (g *GuerrillaDBAndRedisBackend) prepareInsertQuery(rows int, db *sql.DB) *s
 	if g.cache[rows-1] != nil {
 		return g.cache[rows-1]
 	}
-	sqlstr := "INSERT INTO " + g.config.Table + "" +
-		"(" +
-		"`date`, " +
-		"`to`, " +
-		"`from`, " +
-		"`subject`, " +
-		"`body`, " +
-		"`charset`, " +
-		"`mail`, " +
-		"`spam_score`, " +
-		"`hash`, " +
-		"`content_type`, " +
-		"`recipient`, " +
-		"`has_attach`, " +
-		"`ip_addr`, " +
-		"`return_path`, " +
-		"`is_tls`" +
-		")" +
-		" values "
+	sqlstr := fmt.Sprintf("INSERT INTO %s (`date`, `to`, `from`, `subject`, `body`, `charset`, `mail`, `spam_score`, `hash`, `content_type`, `recipient`, `has_attach`, `ip_addr`, `return_path`, `is_tls`) VALUES ", g.config.Table) // #nosec G201 -- SQL injection safe
 	values := "(NOW(), ?, ?, ?, ? , 'UTF-8' , ?, 0, ?, '', ?, 0, ?, ?, ?)"
 	// add more rows
 	comma := ""
