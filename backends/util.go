@@ -51,6 +51,7 @@ func ParseHeaders(mailData string) map[string]string {
 //
 // Returns:
 // - string: The hexadecimal representation of the MD5 hash.
+// Deprecated: use BLAKE128s128Hex instead
 func MD5Hex(stringArguments ...string) string {
 	h := md5.New()
 	var r *strings.Reader
