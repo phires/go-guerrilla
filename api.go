@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/phires/go-guerrilla/backends"
@@ -90,7 +91,7 @@ func (d *Daemon) Shutdown() {
 // Note: if d.Config is nil, the sets d.Config with the unmarshalled AppConfig which will be returned
 func (d *Daemon) LoadConfig(path string) (AppConfig, error) {
 	var ac AppConfig
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return ac, fmt.Errorf("could not read config file: %s", err.Error())
 	}
