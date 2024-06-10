@@ -2,13 +2,17 @@ package log
 
 import (
 	"bufio"
-	log "github.com/sirupsen/logrus"
 	"io"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
+
+// Default file mode
+const defaultFileMode = 0644
 
 // custom logrus hook
 
@@ -26,10 +30,12 @@ type LogrusHook struct {
 	fd *os.File
 	// filename to the file descriptor
 	fname string
+	// filemode for the logfile. Defaults to 0644
+	fmode os.FileMode
 	// txtFormatter that doesn't use colors
 	plainTxtFormatter *log.TextFormatter
-
-	mu sync.Mutex
+	// unused
+	// mu sync.Mutex
 }
 
 // newLogrusHook creates a new hook. dest can be a file name or one of the following strings:
@@ -39,7 +45,7 @@ type LogrusHook struct {
 func NewLogrusHook(dest string) (LoggerHook, error) {
 	hookMu.Lock()
 	defer hookMu.Unlock()
-	hook := LogrusHook{fname: dest}
+	hook := LogrusHook{fname: dest, fmode: defaultFileMode}
 	err := hook.setup(dest)
 	return &hook, err
 }
@@ -90,7 +96,7 @@ func (hook *LogrusHook) setup(dest string) error {
 	} else if out == OutputStdout {
 		hook.w = os.Stdout
 	} else if out == OutputOff {
-		hook.w = ioutil.Discard
+		hook.w = io.Discard
 	} else {
 		if _, err := os.Stat(dest); err == nil {
 			// file exists open the file for appending
@@ -113,7 +119,7 @@ func (hook *LogrusHook) setup(dest string) error {
 
 // openAppend opens the dest file for appending. Default to os.Stderr if it can't open dest
 func (hook *LogrusHook) openAppend(dest string) (err error) {
-	fd, err := os.OpenFile(dest, os.O_APPEND|os.O_WRONLY, 0644)
+	fd, err := os.OpenFile(filepath.Clean(dest), os.O_APPEND|os.O_WRONLY, getFileMode(hook.fmode))
 	if err != nil {
 		log.WithError(err).Error("Could not open log file for appending")
 		hook.w = os.Stderr
@@ -127,7 +133,7 @@ func (hook *LogrusHook) openAppend(dest string) (err error) {
 
 // openCreate creates a new dest file for appending. Default to os.Stderr if it can't open dest
 func (hook *LogrusHook) openCreate(dest string) (err error) {
-	fd, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	fd, err := os.OpenFile(filepath.Clean(dest), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, getFileMode(hook.fmode))
 	if err != nil {
 		log.WithError(err).Error("Could not create log file")
 		hook.w = os.Stderr
@@ -187,5 +193,11 @@ func (hook *LogrusHook) Reopen() error {
 		return hook.openAppend(hook.fname)
 	}
 	return err
+}
 
+// getFileMode returns the file mode or defaultFileMode if fm is 0
+// It only exists to be backward compatible to the old behavior, where
+// the filemode was hardcoded.
+func getFileMode(fm os.FileMode) os.FileMode {
+	return fm | os.FileMode(defaultFileMode)
 }
