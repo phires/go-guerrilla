@@ -23,7 +23,7 @@ func DKIM() Decorator {
 					return NewResult("556 5.7.20 No DKIM signature."), DKIMError
 				}
 
-				verifications, err := dkim.Verify(&e.Data)
+				verifications, err := dkim.Verify(e.NewReader())
 				if err != nil {
 					Log().Errorf("DKIM error=%s", err)
 					return NewResult("556 5.7.20 DKIM verification error."), DKIMError
