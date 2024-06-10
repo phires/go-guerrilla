@@ -291,3 +291,7 @@ Thanks to:
 * https://github.com/Xeoncross
 
 ... and anyone else who opened an issue / sent a PR / gave suggestions!
+
+
+## License information
+This project includes software licensed under the Apache License 2.0
