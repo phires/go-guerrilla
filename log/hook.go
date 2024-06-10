@@ -2,12 +2,13 @@ package log
 
 import (
 	"bufio"
-	log "github.com/sirupsen/logrus"
 	"io"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // custom logrus hook
@@ -90,7 +91,7 @@ func (hook *LogrusHook) setup(dest string) error {
 	} else if out == OutputStdout {
 		hook.w = os.Stdout
 	} else if out == OutputOff {
-		hook.w = ioutil.Discard
+		hook.w = io.Discard
 	} else {
 		if _, err := os.Stat(dest); err == nil {
 			// file exists open the file for appending
@@ -113,7 +114,7 @@ func (hook *LogrusHook) setup(dest string) error {
 
 // openAppend opens the dest file for appending. Default to os.Stderr if it can't open dest
 func (hook *LogrusHook) openAppend(dest string) (err error) {
-	fd, err := os.OpenFile(dest, os.O_APPEND|os.O_WRONLY, 0644)
+	fd, err := os.OpenFile(filepath.Clean(dest), os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		log.WithError(err).Error("Could not open log file for appending")
 		hook.w = os.Stderr
@@ -127,7 +128,7 @@ func (hook *LogrusHook) openAppend(dest string) (err error) {
 
 // openCreate creates a new dest file for appending. Default to os.Stderr if it can't open dest
 func (hook *LogrusHook) openCreate(dest string) (err error) {
-	fd, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	fd, err := os.OpenFile(filepath.Clean(dest), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		log.WithError(err).Error("Could not create log file")
 		hook.w = os.Stderr
