@@ -34,8 +34,8 @@ type LogrusHook struct {
 	fmode os.FileMode
 	// txtFormatter that doesn't use colors
 	plainTxtFormatter *log.TextFormatter
-
-	mu sync.Mutex
+	// unused
+	// mu sync.Mutex
 }
 
 // newLogrusHook creates a new hook. dest can be a file name or one of the following strings:
@@ -45,7 +45,7 @@ type LogrusHook struct {
 func NewLogrusHook(dest string) (LoggerHook, error) {
 	hookMu.Lock()
 	defer hookMu.Unlock()
-	hook := LogrusHook{fname: dest}
+	hook := LogrusHook{fname: dest, fmode: defaultFileMode}
 	err := hook.setup(dest)
 	return &hook, err
 }

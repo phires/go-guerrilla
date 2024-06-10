@@ -1,12 +1,13 @@
 package log
 
 import (
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // The following are taken from logrus
@@ -74,7 +75,8 @@ type HookedLogger struct {
 	// destination, file name or "stderr", "stdout" or "off"
 	dest string
 
-	oo OutputOption
+	// unused
+	//oo OutputOption
 }
 
 type loggerKey struct {
