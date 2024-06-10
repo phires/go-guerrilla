@@ -472,7 +472,7 @@ func GuerrillaDbRedis() Decorator {
 					e.TLS)
 				// give the values to a random query batcher
 				var index int
-				err := binary.Read(rand.Reader, binary.LittleEndian, &index)
+				err = binary.Read(rand.Reader, binary.LittleEndian, &index)
 				if err != nil {
 					panic(err)
 				}

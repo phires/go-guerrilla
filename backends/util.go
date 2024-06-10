@@ -3,7 +3,7 @@ package backends
 import (
 	"bytes"
 	"compress/zlib"
-	"crypto/md5"
+	"crypto/md5" //#nosec G501 - Deprecated, kept for backwards compatibility
 	"fmt"
 	"io"
 	"net/textproto"
@@ -53,7 +53,7 @@ func ParseHeaders(mailData string) map[string]string {
 // - string: The hexadecimal representation of the MD5 hash.
 // Deprecated: use BLAKE128s128Hex instead
 func MD5Hex(stringArguments ...string) string {
-	h := md5.New()
+	h := md5.New() //#nosec G401 - Deprecated, kept for backwards compatibility
 	var r *strings.Reader
 	for i := 0; i < len(stringArguments); i++ {
 		r = strings.NewReader(stringArguments[i])
