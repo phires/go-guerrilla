@@ -415,11 +415,14 @@ func GuerrillaDbRedis() Decorator {
 				if err := e.ParseHeaders(); err != nil {
 					Log().WithError(err).Error("failed to parse headers")
 				}
-				hash := MD5Hex(
+				hash, err := BLAKE2s128Hex(
 					to,
 					e.MailFrom.String(),
 					e.Subject,
 					ts)
+				if err != nil {
+					Log().WithError(err).Error("failed to hash")
+				}
 				e.QueuedId = hash
 
 				// Add extra headers
@@ -469,7 +472,7 @@ func GuerrillaDbRedis() Decorator {
 					e.TLS)
 				// give the values to a random query batcher
 				var index int
-				err := binary.Read(rand.Reader, binary.LittleEndian, &index)
+				err = binary.Read(rand.Reader, binary.LittleEndian, &index)
 				if err != nil {
 					panic(err)
 				}
