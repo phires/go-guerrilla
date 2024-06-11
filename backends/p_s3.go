@@ -2,7 +2,6 @@ package backends
 
 import (
 	"context"
-	"strings"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -109,13 +108,16 @@ func S3() Decorator {
 					hash = e.Hashes[0]
 					e.QueuedId = e.Hashes[0]
 				}
-
+				//var stringer fmt.Stringer
+				//stringer = e
 				r, err := client.PutObject(
 					ctx,
 					s.config.BucketName,
 					hash,
-					strings.NewReader(e.String()),
-					int64(len(e.String())),
+					e.NewReader(),
+					//strings.NewReader(stringer.String()),
+					//int64(len(stringer.String())),
+					int64(e.Len()),
 					minio.PutObjectOptions{
 						ContentType: "text/plain",
 					})
