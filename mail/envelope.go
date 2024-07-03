@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/phires/go-guerrilla/mail/rfc5321"
+	"github.com/jonkwee/go-guerrilla/mail/rfc5321"
 )
 
 // A WordDecoder decodes MIME headers containing RFC 2047 encoded-words.

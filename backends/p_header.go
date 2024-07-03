@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/phires/go-guerrilla/mail"
+	"github.com/jonkwee/go-guerrilla/mail"
 )
 
 type HeaderConfig struct {

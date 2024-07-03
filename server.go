@@ -17,11 +17,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/phires/go-guerrilla/backends"
-	"github.com/phires/go-guerrilla/log"
-	"github.com/phires/go-guerrilla/mail"
-	"github.com/phires/go-guerrilla/mail/rfc5321"
-	"github.com/phires/go-guerrilla/response"
+	"github.com/jonkwee/go-guerrilla/backends"
+	"github.com/jonkwee/go-guerrilla/log"
+	"github.com/jonkwee/go-guerrilla/mail"
+	"github.com/jonkwee/go-guerrilla/mail/rfc5321"
+	"github.com/jonkwee/go-guerrilla/response"
 )
 
 const (

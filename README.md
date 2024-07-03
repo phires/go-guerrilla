@@ -32,7 +32,7 @@ received email, or to validate recipients.
 See the list of available _Processors_ below.
 
 For more details about the backend system, see the:
-[Backends, configuring and extending](https://github.com/phires/go-guerrilla/wiki/Backends,-configuring-and-extending) page.
+[Backends, configuring and extending](https://github.com/jonkwee/go-guerrilla/wiki/Backends,-configuring-and-extending) page.
 
 ### License
 
@@ -48,18 +48,18 @@ for saving email.
 Reload TLS configuration, change most other settings on the fly.
 - Graceful shutdown: Minimise loss of email if you need to shutdown/restart.
 - Be a gentleman to the garbage collector: resources are pooled & recycled where possible.
-- Modular [Backend system](https://github.com/phires/go-guerrilla/wiki/Backends,-configuring-and-extending) 
+- Modular [Backend system](https://github.com/jonkwee/go-guerrilla/wiki/Backends,-configuring-and-extending) 
 - Modern TLS support (STARTTLS or SMTPS).
-- Can be [used as a package](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package) in your Go project. 
+- Can be [used as a package](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package) in your Go project. 
 Get started in just a few lines of code!
-- [Fuzz tested](https://github.com/phires/go-guerrilla/wiki/Fuzz-testing). 
-[Auto-tested](https://travis-ci.org/phires/go-guerrilla). Battle Tested.
+- [Fuzz tested](https://github.com/jonkwee/go-guerrilla/wiki/Fuzz-testing). 
+[Auto-tested](https://travis-ci.org/jonkwee/go-guerrilla). Battle Tested.
 
 #### Backend Features
 
 - Arranged as workers running in parallel, using a producer/consumer type structure, 
  taking advantage of Go's channels and go-routines. 
-- Modular [backend system](https://github.com/phires/go-guerrilla/wiki/Backends,-configuring-and-extending)
+- Modular [backend system](https://github.com/jonkwee/go-guerrilla/wiki/Backends,-configuring-and-extending)
  structured using a [decorator-like pattern](https://en.wikipedia.org/wiki/Decorator_pattern) which allows the chaining of components (a.k.a. _Processors_) via the config.  
 - Different ways for processing / delivering email: Supports MySQL and Redis out-of-the box, many other 
 vendor provided processors available.
@@ -84,7 +84,7 @@ $ make guerrillad
 ```
 
 This will create a executable file named `guerrillad` that's ready to run.
-See the [build notes](https://github.com/phires/go-guerrilla/wiki/Build-Notes) for more details.
+See the [build notes](https://github.com/jonkwee/go-guerrilla/wiki/Build-Notes) for more details.
 
 Next, copy the `goguerrilla.conf.sample` file to `goguerrilla.conf.json`. 
 You may need to customize the `pid_file` setting to somewhere local, 
@@ -94,7 +94,7 @@ Next, run your server like this:
 
 `$ ./guerrillad serve`
 
-The configuration options are detailed on the [configuration page](https://github.com/phires/go-guerrilla/wiki/Configuration). 
+The configuration options are detailed on the [configuration page](https://github.com/jonkwee/go-guerrilla/wiki/Configuration). 
 The main takeaway here is:
 
 The default configuration uses 3 _processors_, they are set using the `save_process` 
@@ -106,12 +106,12 @@ Finally, it will finish at the `Debugger` which will log some debug messages.
 
 Where to go next?
 
-- Try setting up an [example configuration](https://github.com/phires/go-guerrilla/wiki/Configuration-example:-save-to-Redis-&-MySQL) 
+- Try setting up an [example configuration](https://github.com/jonkwee/go-guerrilla/wiki/Configuration-example:-save-to-Redis-&-MySQL) 
 which saves email bodies to Redis and metadata to MySQL.
 - Try importing some of the 'vendored' processors into your project. See [MailDiranasaurus](https://github.com/flashmob/maildiranasaurus)
 as an example project which imports the [MailDir](https://github.com/flashmob/maildir-processor) and [FastCGI](https://github.com/flashmob/fastcgi-processor) processors.
-- Try hacking the source and [create your own processor](https://github.com/phires/go-guerrilla/wiki/Backends,-configuring-and-extending).
-- Once your daemon is running, you might want to stup [log rotation](https://github.com/phires/go-guerrilla/wiki/Automatic-log-file-management-with-logrotate).
+- Try hacking the source and [create your own processor](https://github.com/jonkwee/go-guerrilla/wiki/Backends,-configuring-and-extending).
+- Once your daemon is running, you might want to stup [log rotation](https://github.com/jonkwee/go-guerrilla/wiki/Automatic-log-file-management-with-logrotate).
 
 
 
@@ -125,7 +125,7 @@ Go-Guerrilla can be imported and used as a package in your Go project.
 #### 1. Import the guerrilla package
 ```go
 import (
-    "github.com/phires/go-guerrilla"
+    "github.com/jonkwee/go-guerrilla"
 )
 
 
@@ -163,45 +163,45 @@ The defaults are:
 * timeout to 30 sec 
 * Backend configured with the following processors: `HeadersParser|Header|Debugger` where it will log the received emails.
 
-Next, you may want to [change the interface](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#starting-a-server---custom-listening-interface) (`127.0.0.1:2525`) to the one of your own choice.
+Next, you may want to [change the interface](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#starting-a-server---custom-listening-interface) (`127.0.0.1:2525`) to the one of your own choice.
 
 #### API Documentation topics
 
-Please continue to the [API documentation](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package) for the following topics:
+Please continue to the [API documentation](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package) for the following topics:
 
 
-- [Suppressing log output](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#starting-a-server---suppressing-log-output)
-- [Custom listening interface](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#starting-a-server---custom-listening-interface)
-- [What else can be configured](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#what-else-can-be-configured)
-- [Backends](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#backends)
-    - [About the backend system](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#about-the-backend-system)
-    - [Backend Configuration](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#backend-configuration)
-    - [Registering a Processor](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#registering-a-processor)
-- [Loading config from JSON](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#loading-config-from-json)
-- [Config hot-reloading](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#config-hot-reloading)
-- [Logging](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#logging-stuff)
-- [Log re-opening](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#log-re-opening)
-- [Graceful shutdown](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#graceful-shutdown)
-- [Pub/Sub](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#pubsub)
-- [More Examples](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#more-examples)
+- [Suppressing log output](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#starting-a-server---suppressing-log-output)
+- [Custom listening interface](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#starting-a-server---custom-listening-interface)
+- [What else can be configured](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#what-else-can-be-configured)
+- [Backends](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#backends)
+    - [About the backend system](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#about-the-backend-system)
+    - [Backend Configuration](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#backend-configuration)
+    - [Registering a Processor](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#registering-a-processor)
+- [Loading config from JSON](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#loading-config-from-json)
+- [Config hot-reloading](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#config-hot-reloading)
+- [Logging](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#logging-stuff)
+- [Log re-opening](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#log-re-opening)
+- [Graceful shutdown](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#graceful-shutdown)
+- [Pub/Sub](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#pubsub)
+- [More Examples](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#more-examples)
 
 Use as a Daemon
 ==========================================================
 
 ### Manual for using from the command line
 
-- [guerrillad command](https://github.com/phires/go-guerrilla/wiki/Running-from-command-line#guerrillad-command)
-    - [Starting](https://github.com/phires/go-guerrilla/wiki/Running-from-command-line#starting)
-    - [Re-loading configuration](https://github.com/phires/go-guerrilla/wiki/Running-from-command-line#re-loading-the-config)
-    - [Re-open logs](https://github.com/phires/go-guerrilla/wiki/Running-from-command-line#re-open-log-file)
-    - [Examples](https://github.com/phires/go-guerrilla/wiki/Running-from-command-line#examples)
+- [guerrillad command](https://github.com/jonkwee/go-guerrilla/wiki/Running-from-command-line#guerrillad-command)
+    - [Starting](https://github.com/jonkwee/go-guerrilla/wiki/Running-from-command-line#starting)
+    - [Re-loading configuration](https://github.com/jonkwee/go-guerrilla/wiki/Running-from-command-line#re-loading-the-config)
+    - [Re-open logs](https://github.com/jonkwee/go-guerrilla/wiki/Running-from-command-line#re-open-log-file)
+    - [Examples](https://github.com/jonkwee/go-guerrilla/wiki/Running-from-command-line#examples)
 
 ### Other topics
 
-- [Using Nginx as a proxy](https://github.com/phires/go-guerrilla/wiki/Using-Nginx-as-a-proxy)
-- [Using HAProxy](https://github.com/phires/go-guerrilla/wiki/Using-HAProxy)
-- [Testing STARTTLS](https://github.com/phires/go-guerrilla/wiki/Running-from-command-line#testing-starttls)
-- [Benchmarking](https://github.com/phires/go-guerrilla/wiki/Profiling#benchmarking)
+- [Using Nginx as a proxy](https://github.com/jonkwee/go-guerrilla/wiki/Using-Nginx-as-a-proxy)
+- [Using HAProxy](https://github.com/jonkwee/go-guerrilla/wiki/Using-HAProxy)
+- [Testing STARTTLS](https://github.com/jonkwee/go-guerrilla/wiki/Running-from-command-line#testing-starttls)
+- [Benchmarking](https://github.com/jonkwee/go-guerrilla/wiki/Profiling#benchmarking)
 
 
 
@@ -237,7 +237,7 @@ There are a few default _processors_ to get you started.
 ### Available Processors
 
 The following processors can be imported to your project, then use the
-[Daemon.AddProcessor](https://github.com/phires/go-guerrilla/wiki/Using-as-a-package#registering-a-processor) function to register, then add to your config.
+[Daemon.AddProcessor](https://github.com/jonkwee/go-guerrilla/wiki/Using-as-a-package#registering-a-processor) function to register, then add to your config.
 
 | Processor | Description |
 |-----------|-------------|
@@ -254,7 +254,7 @@ Current release: 1.6.6, tagged on Jun 6, 2024
 
 Next Planned release: 2.0.0 - TBA
 
-See our [change log](https://github.com/phires/go-guerrilla/wiki/Change-Log) for change and release history
+See our [change log](https://github.com/jonkwee/go-guerrilla/wiki/Change-Log) for change and release history
 
 
 Using Nginx as a proxy
@@ -263,7 +263,7 @@ Using Nginx as a proxy
 For such purposes as load balancing, terminating TLS early,
  or supporting SSL versions not supported by Go (highly not recommended if you
  want to use older TLS/SSL versions), 
- it is possible to [use NGINX as a proxy](https://github.com/phires/go-guerrilla/wiki/Using-Nginx-as-a-proxy).
+ it is possible to [use NGINX as a proxy](https://github.com/jonkwee/go-guerrilla/wiki/Using-Nginx-as-a-proxy).
 
 
 

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phires/go-guerrilla/log"
-	"github.com/phires/go-guerrilla/mail"
+	"github.com/jonkwee/go-guerrilla/log"
+	"github.com/jonkwee/go-guerrilla/mail"
 )
 
 func TestRedisGeneric(t *testing.T) {

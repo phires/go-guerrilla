@@ -1,4 +1,4 @@
-module github.com/phires/go-guerrilla
+module github.com/jonkwee/go-guerrilla
 
 go 1.21
 

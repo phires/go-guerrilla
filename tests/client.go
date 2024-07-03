@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/phires/go-guerrilla"
+	"github.com/jonkwee/go-guerrilla"
 )
 
 func Connect(serverConfig guerrilla.ServerConfig, deadline time.Duration) (net.Conn, *bufio.Reader, error) {

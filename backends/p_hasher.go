@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/crypto/blake2s"
 
-	"github.com/phires/go-guerrilla/mail"
+	"github.com/jonkwee/go-guerrilla/mail"
 )
 
 // ----------------------------------------------------------------------------------

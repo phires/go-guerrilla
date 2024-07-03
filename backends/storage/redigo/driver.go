@@ -2,7 +2,7 @@ package redigo_driver
 
 import (
 	redigo "github.com/gomodule/redigo/redis"
-	"github.com/phires/go-guerrilla/backends"
+	"github.com/jonkwee/go-guerrilla/backends"
 )
 
 func init() {

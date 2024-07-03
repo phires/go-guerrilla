@@ -14,10 +14,10 @@ import (
 	"io/ioutil"
 	"net"
 
-	"github.com/phires/go-guerrilla/backends"
-	"github.com/phires/go-guerrilla/log"
-	"github.com/phires/go-guerrilla/mail"
-	"github.com/phires/go-guerrilla/mocks"
+	"github.com/jonkwee/go-guerrilla/backends"
+	"github.com/jonkwee/go-guerrilla/log"
+	"github.com/jonkwee/go-guerrilla/mail"
+	"github.com/jonkwee/go-guerrilla/mocks"
 )
 
 // getMockServerConfig gets a mock ServerConfig struct used for creating a new server

@@ -18,13 +18,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/phires/go-guerrilla/mail/rfc5321"
+	"github.com/jonkwee/go-guerrilla/mail/rfc5321"
 
 	"time"
 
-	"github.com/phires/go-guerrilla"
-	"github.com/phires/go-guerrilla/backends"
-	"github.com/phires/go-guerrilla/log"
+	"github.com/jonkwee/go-guerrilla"
+	"github.com/jonkwee/go-guerrilla/backends"
+	"github.com/jonkwee/go-guerrilla/log"
 
 	"bufio"
 
@@ -37,7 +37,7 @@ import (
 
 	"os"
 
-	"github.com/phires/go-guerrilla/tests/testcert"
+	"github.com/jonkwee/go-guerrilla/tests/testcert"
 )
 
 type TestConfig struct {
