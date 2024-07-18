@@ -275,7 +275,7 @@ func (e *Envelope) ParseContent() error {
 		return errors.New("content-type header not found")
 	}
 
-	content, err := e.GetContent()
+	content, err := e.GetRawContent()
 	if err != nil {
 		return err
 	}
@@ -367,7 +367,6 @@ func BuildFileName(part *multipart.Part, radix string, index int) (filename stri
 	mediaType, _, err := mime.ParseMediaType(part.Header.Get("Content-Type"))
 	if err == nil {
 		mime_type, e := mime.ExtensionsByType(mediaType)
-		fmt.Println("Possible extensions found: ", mime_type)
 
 		// Remove in mime_type any extension not starting with a dot (it SHOULD not happen but it DID happen)
 		for i, e := range mime_type {
@@ -491,7 +490,7 @@ func WritePart(part *multipart.Part, filepath string, e *Envelope) {
 }
 
 // GetContent parses the content of the email, excluding the headers
-func (e *Envelope) GetContent() (string, error) {
+func (e *Envelope) GetRawContent() (string, error) {
 	var err error
 
 	buf := e.Data.Bytes()
