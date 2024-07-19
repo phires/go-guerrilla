@@ -25,7 +25,7 @@ func ContentParser() Decorator {
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
 			if task == TaskSaveMail {
-				if err := e.ParseContent2(); err != nil {
+				if err := e.ParseContent(); err != nil {
 					Log().WithError(err).Error("parse content error")
 				} else {
 					Log().Info("Parsed Content is: ", e.Content)

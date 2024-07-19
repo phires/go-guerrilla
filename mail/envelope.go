@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -16,14 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/phires/go-guerrilla/mail/rfc5321"
-	"io/ioutil"
-	"mime/multipart"
-	"mime/quotedprintable"
-	"math/rand"
 	"encoding/json"
-	"regexp"
-    "github.com/jhillyerd/enmime"
+	"github.com/jhillyerd/enmime"
+	"github.com/phires/go-guerrilla/mail/rfc5321"
+	"math/rand"
 )
 
 // A WordDecoder decodes MIME headers containing RFC 2047 encoded-words.
@@ -129,9 +124,9 @@ func NewAddress(str string) (*Address, error) {
 }
 
 type LocalFileContent struct {
-	PreferredDisplay	string
-	CharSet 			string
-	LocalFile 			string
+	PreferredDisplay string
+	CharSet          string
+	LocalFile        string
 }
 
 // Envelope of Email represents a single SMTP message.
@@ -148,8 +143,8 @@ type Envelope struct {
 	Data bytes.Buffer
 	// Subject stores the subject of the email, extracted and decoded after calling ParseHeaders()
 	Subject string
-	// Content stores the decoded content of the email, extracted after calling ParseContent()
-	Content []LocalFileContent
+	// Content stores the path to the part files, extracted after calling ParseContent
+	Content []string
 	// TLS is true if the email was received using a TLS connection
 	TLS bool
 	// Header stores the results from ParseHeaders()
@@ -220,22 +215,53 @@ func (e *Envelope) ParseHeaders() error {
 	return err
 }
 
-func RandStringBytesRmndr(n int) string {
-	letterBytes := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-	}
-	return string(b)
+var (
+    globalRand *rand.Rand
+    once       sync.Once
+)
+
+func initGlobalRand() {
+    once.Do(func() {
+        globalRand = rand.New(rand.NewSource(time.Now().UnixNano()))
+    })
 }
 
-func (e *Envelope) ParseContent2() error {
+func RandStringBytesRmndr(n int) string {
+    initGlobalRand()
+
+    letterBytes := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    b := make([]byte, n)
+
+    // Create a new rand.Rand instance for each request
+    r := rand.New(rand.NewSource(globalRand.Int63() + time.Now().UnixNano()))
+
+    for i := range b {
+        b[i] = letterBytes[r.Intn(len(letterBytes))]
+    }
+    return string(b)
+}
+
+func writeFile(file_path string, decodedContent []byte) error {
+	file, err := os.Create(file_path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(string(decodedContent))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *Envelope) ParseContent() error {
 	if e.Header == nil {
 		return errors.New("headers not parsed")
 	}
 
 	// Clear the Content slice to prevent accumulation
-	e.Content = []LocalFileContent{}
+	e.Content = []string{}
 
 	// Read path field from localfile-processor.conf.json
 	configPath := "localfile-processor.conf.json"
@@ -261,9 +287,8 @@ func (e *Envelope) ParseContent2() error {
 	// add the current timestamp to the path
 	path += fmt.Sprintf("%d", time.Now().UnixNano())
 
-	// add RandStringBytesRmndr(5)	to the path
 	path += "-"
-	path += RandStringBytesRmndr(5) + "-goguerrilla"
+	path += RandStringBytesRmndr(10) + "-goguerrilla"
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		os.Mkdir(path, 0755)
@@ -276,153 +301,50 @@ func (e *Envelope) ParseContent2() error {
 		return err
 	}
 
-    // The plain text body is available as mime.Text.
-    fmt.Printf("Text Body: %v chars\n", len(env.Text))
+	var localFilePath []string
 
-    // The HTML body is stored in mime.HTML.
-    fmt.Printf("HTML Body: %v chars\n", len(env.HTML))
+	if len(env.Text) > 0 {
+		file_path := path + "/plain_text.txt"
+		writeFile(file_path, []byte(env.Text))
+		localFilePath = append(localFilePath, file_path)
+	}
 
-    // mime.Inlines is a slice of inlined attacments.
-    fmt.Printf("Inlines: %v\n", len(env.Inlines))
+	if len(env.HTML) > 0 {
+		file_path := path + "/html_body.html"
+		writeFile(file_path, []byte(env.HTML))
+		localFilePath = append(localFilePath, file_path)
+	}
 
-    // mime.Attachments contains the non-inline attachments.
-    fmt.Printf("Attachments: %v\n", len(env.Attachments))
+	if len(env.Inlines) > 0 {
+		for i, inline := range env.Inlines {
+			fileName := BuildFileName(inline, "inline_"+fmt.Sprintf("%d", i), i)
+			file_path := path + "/" + fileName
+			writeFile(file_path, inline.Content)
+			localFilePath = append(localFilePath, file_path)
+			fmt.Println("inline: %d", i)
+		}
+	}
+
+	if len(env.Attachments) > 0 {
+		for i, attachment := range env.Attachments {
+			fileName := BuildFileName(attachment, "attachment_"+fmt.Sprintf("%d", i), i)
+			file_path := path + "/" + fileName
+			writeFile(file_path, attachment.Content)
+			localFilePath = append(localFilePath, file_path)
+		}
+	}
+
+	e.Content = localFilePath
 
 	return nil
-}
-
-
-// ParseContent retrieves the smtp content itself and decodes it based on the content-type header
-func (e *Envelope) ParseContent() error {
-	if e.Header == nil {
-		return errors.New("headers not parsed")
-	}
-
-	// Clear the Content slice to prevent accumulation
-	e.Content = []LocalFileContent{}
-
-	// Read path field from localfile-processor.conf.json
-	configPath := "localfile-processor.conf.json"
-	configFile, err := os.Open(configPath)
-	if err != nil {
-		return err
-	}
-	defer configFile.Close()
-
-	var config struct {
-		Path string `json:"path"`
-	}
-
-	decoder := json.NewDecoder(configFile)
-	err = decoder.Decode(&config)
-
-	if err != nil {
-		return err
-	}
-
-	path := config.Path + "/"
-
-	// add the current timestamp to the path
-	path += fmt.Sprintf("%d", time.Now().UnixNano())
-
-	// add RandStringBytesRmndr(5)	to the path
-	path += "-"
-	path += RandStringBytesRmndr(5) + "-goguerrilla"
-
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		os.Mkdir(path, 0755)
-	}
-
-	headerContentType := e.Header.Get("Content-Type")
-	if headerContentType == "" {
-		return errors.New("content-type header not found")
-	}
-
-	content, err := e.GetRawContent()
-	if err != nil {
-		return err
-	}
-
-	// Single part message
-	if strings.HasPrefix(headerContentType, "text/") {
-		var err error
-
-		_, params, err := mime.ParseMediaType(headerContentType)
-		if err != nil {
-			return err
-		}
-
-		file_path := ""
-
-		if params["charset"] == "utf-8" {
-			decodedContent, err := base64.StdEncoding.DecodeString(content)
-
-			if err != nil {
-				return err
-			}
-
-			file_path = path + "/root_utf8.txt"
-			file, err := os.Create(file_path)
-
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-
-			_, err = file.WriteString(string(decodedContent))
-			if err != nil {
-				return err
-			}
-		} else if params["charset"] == "us-ascii" {
-			file_path = path + "/root_us-ascii.txt"
-
-			file, err := os.Create(file_path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-
-			_, err = file.WriteString(string(content))
-			if err != nil {
-				return err
-			}
-		} else { // Default to asumption: plain old ASCII
-			file_path = path + "/root_unknowncharset.txt"
-			file, err := os.Create(file_path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-
-			_, err = file.WriteString(string(content))
-			if err != nil {
-				return err
-			}
-		}
-		var localFileContent LocalFileContent
-		localFileContent.PreferredDisplay = "INLINE"
-		localFileContent.CharSet = params["charset"]
-		localFileContent.LocalFile = file_path
-
-		e.Content = append(e.Content, localFileContent)
-		return nil
-	} else if strings.HasPrefix(headerContentType, "multipart/") { // Multipart message
-		_, params, err := mime.ParseMediaType(headerContentType)
-		if err != nil {
-			return err
-		}
-		ParsePart(strings.NewReader(content), params["boundary"], path, e)
-		return nil
-	}
-	return errors.New("unsupported media type: " + headerContentType)
 }
 
 // BuildFileName builds a file name for a MIME part
 // If the name is provided in the Content-Disposition header, it will be used.
 // Otherwise, a name will be generated based on the radix and index.
-func BuildFileName(part *multipart.Part, radix string, index int) (filename string) {
+func BuildFileName(part *enmime.Part, radix string, index int) (filename string) {
 
-	filename = part.FileName()
+	filename = part.FileName
 	if len(filename) > 0 {
 		return filename
 	}
@@ -439,120 +361,21 @@ func BuildFileName(part *multipart.Part, radix string, index int) (filename stri
 		}
 
 		if e == nil {
-			if len(mime_type)>0 {   // Arbitrary take the first extension found
+			if len(mime_type) > 0 { // Arbitrary take the first extension found
 				return fmt.Sprintf("%s-%d-autogeneratedfilename%s", radix, index, mime_type[0])
-			} else {				// No extension found
-				return fmt.Sprintf("%s-%d-autogeneratedfilename%s", radix, index, ".unknown")
+			} else {
+				return fmt.Sprintf("%s-%d-autogeneratedfilename.unidentified", radix, index)
 			}
+		} else { // No extension found
+			return fmt.Sprintf("%s-%d-autogeneratedfilename.unknown", radix, index)
 		}
 	}
-	return fmt.Sprintf("%s-%d-autogeneratedfilename%s", radix, index, ".unspecified")
+
+	return fmt.Sprintf("%s-%d-autogeneratedfilename.unspecified", radix, index)
 }
 
-// Parse a given MIME part
-func ParsePart(mime_data io.Reader, boundary string, path string, e *Envelope) {
 
-	path += "/" + boundary
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		os.Mkdir(path, 0755)
-	}
-
-	reader := multipart.NewReader(mime_data, boundary)
-	if reader == nil {
-		return
-	}
-
-	// Go through each of the MIME part of the message Body with NextPart(),
-	for {
-		new_part, err := reader.NextPart()
-		if err == io.EOF {   // End of the MIME parts
-			break
-		}
-		if err != nil {
-			fmt.Println("Error going through the next MIME part - ", err)
-			break
-		}
-
-		mediaType, params, err := mime.ParseMediaType(new_part.Header.Get("Content-Type"))
-
-		if err == nil && strings.HasPrefix(mediaType, "multipart/") {  // This is a new multipart to be handled recursively
-			ParsePart(new_part, params["boundary"], path, e)
-		} else {
-			filename := BuildFileName(new_part, boundary, 1)
-			filepath := ""
-			if path == "" {
-				filepath = filename
-			} else {
-				filepath = path + "/" + filename
-			}
-
-			WritePart(new_part, filepath, e)
-		}
-	}
-}
-
-// WitePart decodes the data of MIME part and writes it to the file filename.
-func WritePart(part *multipart.Part, filepath string, e *Envelope) {
-
-	// Read the data for this MIME part
-	part_data, err := ioutil.ReadAll(part)
-	if err != nil {
-		fmt.Println("Error reading MIME part data - ", err)
-		return
-	}
-
-	contentTransferEncoding := strings.ToUpper(part.Header.Get("Content-Transfer-Encoding"))
-	contentDisposition := strings.ToUpper(part.Header.Get("Content-Disposition"))
-	contentType := strings.ToUpper(part.Header.Get("Content-Type"))
-
-	contentCharset := ""
-	// Use a regexp to extract the charset from the content-type header
-	charsetRegexp := regexp.MustCompile(`(?i)charset=([^;]+)`)
-	matches := charsetRegexp.FindStringSubmatch(contentType)
-
-	if len(matches) > 1 {
-		contentCharset = matches[1]
-	}
-
-	preferredDisplay := "INLINE"  // Most SMTP messages don't specify Content-Disposition when it's INLINE
-
-	// Check if the MIME part is an attachment
-	if strings.HasPrefix(contentDisposition, "ATTACHMENT") {
-		preferredDisplay = "ATTACHMENT"
-	} else if strings.HasPrefix(contentDisposition, "INLINE") {
-		preferredDisplay = "INLINE"
-	}
-
-	switch {
-		case strings.Compare(contentTransferEncoding, "BASE64") == 0:
-			decoded_content, err := base64.StdEncoding.DecodeString(string(part_data))
-			if err != nil {
-				fmt.Println("Error decoding base64 -", err)
-			} else {
-				ioutil.WriteFile(filepath, decoded_content, 0644)
-			}
-
-		case strings.Compare(contentTransferEncoding, "QUOTED-PRINTABLE") == 0:
-			decoded_content, err := ioutil.ReadAll(quotedprintable.NewReader(bytes.NewReader(part_data)))
-			if err != nil {
-				fmt.Println("Error decoding quoted-printable -", err)
-			} else {
-				ioutil.WriteFile(filepath, decoded_content, 0644)
-			}
-
-		default:
-			ioutil.WriteFile(filepath, part_data, 0644)
-	}
-
-	var localFileContent LocalFileContent
-	localFileContent.PreferredDisplay = preferredDisplay
-	localFileContent.CharSet = contentCharset
-	localFileContent.LocalFile = filepath
-
-	e.Content = append(e.Content, localFileContent)
-}
-
-// GetContent parses the content of the email, excluding the headers
+// GetRawContent parses the content of the email, excluding the headers
 func (e *Envelope) GetRawContent() (string, error) {
 	var err error
 
