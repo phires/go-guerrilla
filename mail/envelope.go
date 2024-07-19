@@ -23,6 +23,7 @@ import (
 	"math/rand"
 	"encoding/json"
 	"regexp"
+    "github.com/jhillyerd/enmime"
 )
 
 // A WordDecoder decodes MIME headers containing RFC 2047 encoded-words.
@@ -226,6 +227,68 @@ func RandStringBytesRmndr(n int) string {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 	return string(b)
+}
+
+func (e *Envelope) ParseContent2() error {
+	if e.Header == nil {
+		return errors.New("headers not parsed")
+	}
+
+	// Clear the Content slice to prevent accumulation
+	e.Content = []LocalFileContent{}
+
+	// Read path field from localfile-processor.conf.json
+	configPath := "localfile-processor.conf.json"
+	configFile, err := os.Open(configPath)
+	if err != nil {
+		return err
+	}
+	defer configFile.Close()
+
+	var config struct {
+		Path string `json:"path"`
+	}
+
+	decoder := json.NewDecoder(configFile)
+	err = decoder.Decode(&config)
+
+	if err != nil {
+		return err
+	}
+
+	path := config.Path + "/"
+
+	// add the current timestamp to the path
+	path += fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// add RandStringBytesRmndr(5)	to the path
+	path += "-"
+	path += RandStringBytesRmndr(5) + "-goguerrilla"
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		os.Mkdir(path, 0755)
+	}
+
+	// Parse message body with enmime.
+	env, err := enmime.ReadEnvelope(bytes.NewReader(e.Data.Bytes()))
+	if err != nil {
+		fmt.Print(err)
+		return err
+	}
+
+    // The plain text body is available as mime.Text.
+    fmt.Printf("Text Body: %v chars\n", len(env.Text))
+
+    // The HTML body is stored in mime.HTML.
+    fmt.Printf("HTML Body: %v chars\n", len(env.HTML))
+
+    // mime.Inlines is a slice of inlined attacments.
+    fmt.Printf("Inlines: %v\n", len(env.Inlines))
+
+    // mime.Attachments contains the non-inline attachments.
+    fmt.Printf("Attachments: %v\n", len(env.Attachments))
+
+	return nil
 }
 
 
