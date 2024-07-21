@@ -241,19 +241,6 @@ func RandStringBytesRmndr(n int) string {
     return string(b)
 }
 
-func writeFile(file_path string, decodedContent []byte) error {
-	file, err := os.Create(file_path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	_, err = file.WriteString(string(decodedContent))
-	if err != nil {
-		return err
-	}
-	return nil
-}
 
 func (e *Envelope) ParseContent() error {
 	if e.Header == nil {
@@ -305,13 +292,13 @@ func (e *Envelope) ParseContent() error {
 
 	if len(env.Text) > 0 {
 		file_path := path + "/plain_text.txt"
-		writeFile(file_path, []byte(env.Text))
+		WriteFile(file_path, []byte(env.Text))
 		localFilePath = append(localFilePath, file_path)
 	}
 
 	if len(env.HTML) > 0 {
 		file_path := path + "/html_body.html"
-		writeFile(file_path, []byte(env.HTML))
+		WriteFile(file_path, []byte(env.HTML))
 		localFilePath = append(localFilePath, file_path)
 	}
 
@@ -319,9 +306,8 @@ func (e *Envelope) ParseContent() error {
 		for i, inline := range env.Inlines {
 			fileName := BuildFileName(inline, "inline_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
-			writeFile(file_path, inline.Content)
+			WriteFile(file_path, inline.Content)
 			localFilePath = append(localFilePath, file_path)
-			fmt.Println("inline: %d", i)
 		}
 	}
 
@@ -329,7 +315,7 @@ func (e *Envelope) ParseContent() error {
 		for i, attachment := range env.Attachments {
 			fileName := BuildFileName(attachment, "attachment_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
-			writeFile(file_path, attachment.Content)
+			WriteFile(file_path, attachment.Content)
 			localFilePath = append(localFilePath, file_path)
 		}
 	}
