@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"github.com/jhillyerd/enmime"
 	"github.com/phires/go-guerrilla/mail/rfc5321"
-	"math/rand"
 )
 
 // A WordDecoder decodes MIME headers containing RFC 2047 encoded-words.
@@ -215,33 +214,8 @@ func (e *Envelope) ParseHeaders() error {
 	return err
 }
 
-var (
-    globalRand *rand.Rand
-    once       sync.Once
-)
-
-func initGlobalRand() {
-    once.Do(func() {
-        globalRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-    })
-}
-
-func RandStringBytesRmndr(n int) string {
-    initGlobalRand()
-
-    letterBytes := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    b := make([]byte, n)
-
-    // Create a new rand.Rand instance for each request
-    r := rand.New(rand.NewSource(globalRand.Int63() + time.Now().UnixNano()))
-
-    for i := range b {
-        b[i] = letterBytes[r.Intn(len(letterBytes))]
-    }
-    return string(b)
-}
-
-
+// Retrieve the content of the email and save
+// each raw or MIME part to the local file system
 func (e *Envelope) ParseContent() error {
 	if e.Header == nil {
 		return errors.New("headers not parsed")
@@ -270,12 +244,7 @@ func (e *Envelope) ParseContent() error {
 	}
 
 	path := config.Path + "/"
-
-	// add the current timestamp to the path
-	path += fmt.Sprintf("%d", time.Now().UnixNano())
-
-	path += "-"
-	path += RandStringBytesRmndr(10) + "-goguerrilla"
+	path += e.QueuedId + "-goguerrilla"
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		os.Mkdir(path, 0755)
