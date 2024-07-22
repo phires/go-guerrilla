@@ -124,7 +124,6 @@ func NewAddress(str string) (*Address, error) {
 
 type LocalFileContent struct {
 	PreferredDisplay string
-	CharSet          string
 	LocalFile        string
 }
 
@@ -143,7 +142,7 @@ type Envelope struct {
 	// Subject stores the subject of the email, extracted and decoded after calling ParseHeaders()
 	Subject string
 	// Content stores the path to the part files, extracted after calling ParseContent
-	Content []string
+	LocalFileContent []LocalFileContent
 	// TLS is true if the email was received using a TLS connection
 	TLS bool
 	// Header stores the results from ParseHeaders()
@@ -222,7 +221,7 @@ func (e *Envelope) ParseContent() error {
 	}
 
 	// Clear the Content slice to prevent accumulation
-	e.Content = []string{}
+	e.LocalFileContent = []LocalFileContent{}
 
 	// Read path field from localfile-processor.conf.json
 	configPath := "localfile-processor.conf.json"
@@ -257,18 +256,18 @@ func (e *Envelope) ParseContent() error {
 		return err
 	}
 
-	var localFilePath []string
+	var localFileContent []LocalFileContent
 
 	if len(env.Text) > 0 {
-		file_path := path + "/plain_text.txt"
+		file_path := path + "/body.txt"
 		WriteFile(file_path, []byte(env.Text))
-		localFilePath = append(localFilePath, file_path)
+		localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "PLAIN", LocalFile: file_path})
 	}
 
 	if len(env.HTML) > 0 {
-		file_path := path + "/html_body.html"
+		file_path := path + "/body.html"
 		WriteFile(file_path, []byte(env.HTML))
-		localFilePath = append(localFilePath, file_path)
+		localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "HTML", LocalFile: file_path})
 	}
 
 	if len(env.Inlines) > 0 {
@@ -276,7 +275,7 @@ func (e *Envelope) ParseContent() error {
 			fileName := BuildFileName(inline, "inline_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
 			WriteFile(file_path, inline.Content)
-			localFilePath = append(localFilePath, file_path)
+			localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "INLINE", LocalFile: file_path})
 		}
 	}
 
@@ -285,11 +284,11 @@ func (e *Envelope) ParseContent() error {
 			fileName := BuildFileName(attachment, "attachment_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
 			WriteFile(file_path, attachment.Content)
-			localFilePath = append(localFilePath, file_path)
+			localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "ATTACHMENT", LocalFile: file_path})
 		}
 	}
 
-	e.Content = localFilePath
+	e.LocalFileContent = localFileContent
 
 	return nil
 }

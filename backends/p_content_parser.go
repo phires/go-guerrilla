@@ -28,7 +28,7 @@ func ContentParser() Decorator {
 				if err := e.ParseContent(); err != nil {
 					Log().WithError(err).Error("parse content error")
 				} else {
-					Log().Info("Parsed Content is: ", e.Content)
+					Log().Info("Parsed Content is: ", e.LocalFileContent)
 				}
 				// next processor
 				return p.Process(e, task)
