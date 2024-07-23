@@ -11,11 +11,11 @@ import (
 	"net"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"encoding/json"
 	"github.com/jhillyerd/enmime"
 	"github.com/phires/go-guerrilla/mail/rfc5321"
 )
@@ -215,7 +215,7 @@ func (e *Envelope) ParseHeaders() error {
 
 // Retrieve the content of the email and save
 // each raw or MIME part to the local file system
-func (e *Envelope) ParseContent() error {
+func (e *Envelope) ParseContent(storagePath string) error {
 	if e.Header == nil {
 		return errors.New("headers not parsed")
 	}
@@ -223,30 +223,13 @@ func (e *Envelope) ParseContent() error {
 	// Clear the Content slice to prevent accumulation
 	e.LocalFileContent = []LocalFileContent{}
 
-	// Read path field from localfile-processor.conf.json
-	configPath := "localfile-processor.conf.json"
-	configFile, err := os.Open(configPath)
-	if err != nil {
-		return err
-	}
-	defer configFile.Close()
+	path := storagePath + "/" + e.QueuedId
 
-	var config struct {
-		Path string `json:"path"`
-	}
-
-	decoder := json.NewDecoder(configFile)
-	err = decoder.Decode(&config)
-
-	if err != nil {
-		return err
-	}
-
-	path := config.Path + "/"
-	path += e.QueuedId + "-goguerrilla"
+	// Sanitize the path
+	path = filepath.Clean(path)
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		os.Mkdir(path, 0755)
+		os.MkdirAll(path, 0755)
 	}
 
 	// Parse message body with enmime.
@@ -260,13 +243,19 @@ func (e *Envelope) ParseContent() error {
 
 	if len(env.Text) > 0 {
 		file_path := path + "/body.txt"
-		WriteFile(file_path, []byte(env.Text))
+		err := WriteFile(file_path, []byte(env.Text))
+		if err != nil {
+			return err
+		}
 		localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "PLAIN", LocalFile: file_path})
 	}
 
 	if len(env.HTML) > 0 {
 		file_path := path + "/body.html"
-		WriteFile(file_path, []byte(env.HTML))
+		err := WriteFile(file_path, []byte(env.HTML))
+		if err != nil {
+			return err
+		}
 		localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "HTML", LocalFile: file_path})
 	}
 
@@ -274,7 +263,10 @@ func (e *Envelope) ParseContent() error {
 		for i, inline := range env.Inlines {
 			fileName := BuildFileName(inline, "inline_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
-			WriteFile(file_path, inline.Content)
+			err := WriteFile(file_path, inline.Content)
+			if err != nil {
+				return err
+			}
 			localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "INLINE", LocalFile: file_path})
 		}
 	}
@@ -283,7 +275,10 @@ func (e *Envelope) ParseContent() error {
 		for i, attachment := range env.Attachments {
 			fileName := BuildFileName(attachment, "attachment_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
-			WriteFile(file_path, attachment.Content)
+			err := WriteFile(file_path, attachment.Content)
+			if err != nil {
+				return err
+			}
 			localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "ATTACHMENT", LocalFile: file_path})
 		}
 	}
