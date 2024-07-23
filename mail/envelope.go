@@ -307,7 +307,7 @@ func BuildFileName(part *enmime.Part, radix string, index int) (filename string)
 	if err == nil {
 		mime_type, e := mime.ExtensionsByType(mediaType)
 
-		// Remove in mime_type any extension not starting with a dot (it SHOULD not happen but it DID happen)
+		// Remove any extension not starting with a dot - it should not happen but it might happen
 		for i, e := range mime_type {
 			if !strings.HasPrefix(e, ".") {
 				mime_type = append(mime_type[:i], mime_type[i+1:]...)
