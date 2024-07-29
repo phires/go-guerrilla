@@ -122,10 +122,11 @@ func NewAddress(str string) (*Address, error) {
 	return a, nil
 }
 
-type LocalFileContent struct {
+type LocalFilesPaths struct {
 	PreferredDisplay string
-	LocalFile        string
+	Path             string
 }
+
 
 // Envelope of Email represents a single SMTP message.
 type Envelope struct {
@@ -141,8 +142,10 @@ type Envelope struct {
 	Data bytes.Buffer
 	// Subject stores the subject of the email, extracted and decoded after calling ParseHeaders()
 	Subject string
-	// Content stores the path to the part files, extracted after calling ParseContent
-	LocalFileContent []LocalFileContent
+    // EnvelopeBody stores the parsed email content
+	EnvelopeBody enmime.Envelope
+	// LocalFilesPaths stores the path to the part files, extracted after calling ParseContent
+	LocalFilesPaths []LocalFilesPaths
 	// TLS is true if the email was received using a TLS connection
 	TLS bool
 	// Header stores the results from ParseHeaders()
@@ -215,13 +218,39 @@ func (e *Envelope) ParseHeaders() error {
 
 // Retrieve the content of the email and save
 // each raw or MIME part to the local file system
-func (e *Envelope) ParseContent(storagePath string) error {
+func (e *Envelope) ParseContent() error {
 	if e.Header == nil {
 		return errors.New("headers not parsed")
 	}
 
-	// Clear the Content slice to prevent accumulation
-	e.LocalFileContent = []LocalFileContent{}
+	// Clear the Content to prevent accumulation
+	e.EnvelopeBody = enmime.Envelope{}
+
+	// Parse message body with enmime.
+	env, err := enmime.ReadEnvelope(bytes.NewReader(e.Data.Bytes()))
+	if err != nil {
+		fmt.Print(err)
+		return err
+	}
+
+	e.EnvelopeBody = *env
+	return nil
+}
+
+
+// Retrieve the content of the email and save
+// each raw or MIME part to the local file system
+func (e *Envelope) SaveLocalFiles(storagePath string) error {
+	if e.Header == nil {
+		return errors.New("headers not parsed")
+	}
+
+	if len(e.EnvelopeBody.Text) == 0 && len(e.EnvelopeBody.HTML) == 0 && len(e.EnvelopeBody.Inlines) == 0 && len(e.EnvelopeBody.Attachments) == 0 {
+		return errors.New("content not parsed")
+	}
+
+	// Clear LocalFilesPaths to prevent accumulation
+	e.LocalFilesPaths = []LocalFilesPaths{}
 
 	path := storagePath + "/" + e.QueuedId
 
@@ -232,80 +261,53 @@ func (e *Envelope) ParseContent(storagePath string) error {
 		os.MkdirAll(path, 0755)
 	}
 
-	// Parse message body with enmime.
-	env, err := enmime.ReadEnvelope(bytes.NewReader(e.Data.Bytes()))
-	if err != nil {
-		fmt.Print(err)
-		return err
-	}
+	var localFilesPaths []LocalFilesPaths
 
-	var localFileContent []LocalFileContent
-
-	if len(env.Text) > 0 {
+	if len(e.EnvelopeBody.Text) > 0 {
 		file_path := path + "/body.txt"
-		err := WriteFile(file_path, []byte(env.Text))
+		err := WriteFile(file_path, []byte(e.EnvelopeBody.Text))
 		if err != nil {
 			return err
 		}
-		localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "PLAIN", LocalFile: file_path})
+		localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "PLAIN", Path: file_path})
 	}
 
-	if len(env.HTML) > 0 {
+	if len(e.EnvelopeBody.HTML) > 0 {
 		file_path := path + "/body.html"
-		err := WriteFile(file_path, []byte(env.HTML))
+		err := WriteFile(file_path, []byte(e.EnvelopeBody.HTML))
 		if err != nil {
 			return err
 		}
-		localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "HTML", LocalFile: file_path})
+		localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "HTML", Path: file_path})
 	}
 
-	if len(env.Inlines) > 0 {
-		for i, inline := range env.Inlines {
+	if len(e.EnvelopeBody.Inlines) > 0 {
+		for i, inline := range e.EnvelopeBody.Inlines {
 			fileName := BuildFileName(inline, "inline_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
 			err := WriteFile(file_path, inline.Content)
 			if err != nil {
 				return err
 			}
-			localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "INLINE", LocalFile: file_path})
+			localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "INLINE", Path: file_path})
 		}
 	}
 
-	if len(env.Attachments) > 0 {
-		for i, attachment := range env.Attachments {
+	if len(e.EnvelopeBody.Attachments) > 0 {
+		for i, attachment := range e.EnvelopeBody.Attachments {
 			fileName := BuildFileName(attachment, "attachment_"+fmt.Sprintf("%d", i), i)
 			file_path := path + "/" + fileName
 			err := WriteFile(file_path, attachment.Content)
 			if err != nil {
 				return err
 			}
-			localFileContent = append(localFileContent, LocalFileContent{PreferredDisplay: "ATTACHMENT", LocalFile: file_path})
+			localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "ATTACHMENT", Path: file_path})
 		}
 	}
 
-	e.LocalFileContent = localFileContent
+	e.LocalFilesPaths = localFilesPaths
 
 	return nil
-}
-
-// GetRawContent parses the content of the email, excluding the headers
-func (e *Envelope) GetRawContent() (string, error) {
-	var err error
-
-	buf := e.Data.Bytes()
-	// find where the header ends, assuming that over 30 kb would be max
-	if len(buf) > maxHeaderChunk {
-		buf = buf[:maxHeaderChunk]
-	}
-
-	contentStart := bytes.Index(buf, []byte{'\n', '\n'}) // the first two new-lines chars are the End Of Header / Start Of Content
-	if contentStart > -1 {
-		content := buf[contentStart+2:]
-		return string(content), nil
-	} else {
-		err = errors.New("header not found")
-	}
-	return "", err
 }
 
 // Len returns the number of bytes that would be in the reader returned by NewReader()
