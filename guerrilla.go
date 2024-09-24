@@ -505,9 +505,10 @@ func (g *guerrilla) Shutdown() {
 
 	g.guard.Lock()
 	defer func() {
-		g.state = daemonStateStopped
 		defer g.guard.Unlock()
+		g.state = daemonStateStopped
 	}()
+
 	if err := g.backend().Shutdown(); err != nil {
 		g.mainlog().WithError(err).Warn("Backend failed to shutdown")
 	} else {

@@ -193,6 +193,16 @@ func (c *AppConfig) Load(jsonBytes []byte) error {
 
 	// read the timestamps for the TLS keys, to determine if they need to be reloaded
 	for i := 0; i < len(c.Servers); i++ {
+		// check if server is enabled, skip tls opening if not
+		if !c.Servers[i].IsEnabled {
+			continue
+		}
+		// check if any of the currently two tls options are enabled,
+		// if not, skip
+		if c.Servers[i].TLS.AlwaysOn == false && c.Servers[i].TLS.StartTLSOn == false {
+			continue
+		}
+
 		if err := c.Servers[i].loadTlsKeyTimestamps(); err != nil {
 			return err
 		}
@@ -454,7 +464,7 @@ func (sc *ServerConfig) loadTlsKeyTimestamps() error {
 func (sc *ServerConfig) Validate() error {
 	var errs Errors
 
-	if sc.TLS.StartTLSOn || sc.TLS.AlwaysOn {
+	if (sc.TLS.StartTLSOn || sc.TLS.AlwaysOn) && sc.IsEnabled {
 		if sc.TLS.PublicKeyFile == "" {
 			errs = append(errs, errors.New("PublicKeyFile is empty"))
 		}
