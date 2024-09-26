@@ -15,7 +15,8 @@
         "save_process" : "HeadersParser|Header|Debugger",
         "primary_mail_host" : "mail.example.com",
         "gw_save_timeout" : "30s",
-        "gw_val_rcpt_timeout" : "3s"
+        "gw_val_rcpt_timeout" : "3s",
+        "local_storage_path" : "/tmp/go-guerrilla/"
     },
     "servers" : [
         {

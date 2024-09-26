@@ -10,10 +10,13 @@ import (
 	"mime"
 	"net"
 	"net/textproto"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/jhillyerd/enmime"
 	"github.com/phires/go-guerrilla/mail/rfc5321"
 )
 
@@ -119,6 +122,12 @@ func NewAddress(str string) (*Address, error) {
 	return a, nil
 }
 
+type LocalFilesPaths struct {
+	PreferredDisplay string
+	Path             string
+}
+
+
 // Envelope of Email represents a single SMTP message.
 type Envelope struct {
 	// Remote IP address
@@ -133,6 +142,10 @@ type Envelope struct {
 	Data bytes.Buffer
 	// Subject stores the subject of the email, extracted and decoded after calling ParseHeaders()
 	Subject string
+    // EnvelopeBody stores the parsed email content
+	EnvelopeBody enmime.Envelope
+	// LocalFilesPaths stores the path to the part files, extracted after calling ParseContent
+	LocalFilesPaths []LocalFilesPaths
 	// TLS is true if the email was received using a TLS connection
 	TLS bool
 	// Header stores the results from ParseHeaders()
@@ -201,6 +214,100 @@ func (e *Envelope) ParseHeaders() error {
 		err = errors.New("header not found")
 	}
 	return err
+}
+
+// Retrieve the content of the email and save
+// each raw or MIME part to the local file system
+func (e *Envelope) ParseContent() error {
+	if e.Header == nil {
+		return errors.New("headers not parsed")
+	}
+
+	// Clear the Content to prevent accumulation
+	e.EnvelopeBody = enmime.Envelope{}
+
+	// Parse message body with enmime.
+	env, err := enmime.ReadEnvelope(bytes.NewReader(e.Data.Bytes()))
+	if err != nil {
+		fmt.Print(err)
+		return err
+	}
+
+	e.EnvelopeBody = *env
+	return nil
+}
+
+
+// Retrieve the content of the email and save
+// each raw or MIME part to the local file system
+func (e *Envelope) SaveLocalFiles(storagePath string) error {
+	if e.Header == nil {
+		return errors.New("headers not parsed")
+	}
+
+	if len(e.EnvelopeBody.Text) == 0 && len(e.EnvelopeBody.HTML) == 0 && len(e.EnvelopeBody.Inlines) == 0 && len(e.EnvelopeBody.Attachments) == 0 {
+		return errors.New("content not parsed")
+	}
+
+	// Clear LocalFilesPaths to prevent accumulation
+	e.LocalFilesPaths = []LocalFilesPaths{}
+
+	path := storagePath + "/" + e.QueuedId
+
+	// Sanitize the path
+	path = filepath.Clean(path)
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		os.MkdirAll(path, 0755)
+	}
+
+	var localFilesPaths []LocalFilesPaths
+
+	if len(e.EnvelopeBody.Text) > 0 {
+		file_path := path + "/body.txt"
+		err := WriteFile(file_path, []byte(e.EnvelopeBody.Text))
+		if err != nil {
+			return err
+		}
+		localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "PLAIN", Path: file_path})
+	}
+
+	if len(e.EnvelopeBody.HTML) > 0 {
+		file_path := path + "/body.html"
+		err := WriteFile(file_path, []byte(e.EnvelopeBody.HTML))
+		if err != nil {
+			return err
+		}
+		localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "HTML", Path: file_path})
+	}
+
+	if len(e.EnvelopeBody.Inlines) > 0 {
+		for i, inline := range e.EnvelopeBody.Inlines {
+			fileName := BuildFileName(inline, "inline_"+fmt.Sprintf("%d", i), i)
+			file_path := path + "/" + fileName
+			err := WriteFile(file_path, inline.Content)
+			if err != nil {
+				return err
+			}
+			localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "INLINE", Path: file_path})
+		}
+	}
+
+	if len(e.EnvelopeBody.Attachments) > 0 {
+		for i, attachment := range e.EnvelopeBody.Attachments {
+			fileName := BuildFileName(attachment, "attachment_"+fmt.Sprintf("%d", i), i)
+			file_path := path + "/" + fileName
+			err := WriteFile(file_path, attachment.Content)
+			if err != nil {
+				return err
+			}
+			localFilesPaths = append(localFilesPaths, LocalFilesPaths{PreferredDisplay: "ATTACHMENT", Path: file_path})
+		}
+	}
+
+	e.LocalFilesPaths = localFilesPaths
+
+	return nil
 }
 
 // Len returns the number of bytes that would be in the reader returned by NewReader()
