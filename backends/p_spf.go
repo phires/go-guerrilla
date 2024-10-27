@@ -24,11 +24,11 @@ func SPF() Decorator {
 				}
 
 				if res == spf.Fail {
-					Log().Debugln("SPF fail result: %s", res)
+					Log().Debugln("SPF fail result:", res)
 					return NewResult("556 5.7.0 Unauthorized sender. Email blocked due to policy reasons."), SpfError
 				}
 
-				Log().Debugln("SPF pass result: %s", res)
+				Log().Debugln("SPF pass result:", res)
 
 				// next processor
 				return p.Process(e, task)

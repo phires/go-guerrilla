@@ -2,12 +2,13 @@ package log
 
 import (
 	"bufio"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // custom logrus hook
@@ -19,6 +20,7 @@ var hookMu sync.Mutex
 type LoggerHook interface {
 	log.Hook
 	Reopen() error
+	Close() error
 }
 type LogrusHook struct {
 	w io.Writer
@@ -187,5 +189,19 @@ func (hook *LogrusHook) Reopen() error {
 		return hook.openAppend(hook.fname)
 	}
 	return err
+
+}
+
+// Close closes the log file descriptor
+func (hook *LogrusHook) Close() error {
+	hookMu.Lock()
+	defer hookMu.Unlock()
+	if hook.fd != nil {
+		if err := hook.fd.Close(); err != nil {
+			hook.fd = nil
+			return err
+		}
+	}
+	return nil
 
 }

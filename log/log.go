@@ -1,12 +1,13 @@
 package log
 
 import (
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // The following are taken from logrus
@@ -55,6 +56,7 @@ type Logger interface {
 	log.FieldLogger
 	WithConn(conn net.Conn) *log.Entry
 	Reopen() error
+	Close() error
 	GetLogDest() string
 	SetLevel(level string)
 	GetLevel() string
@@ -203,6 +205,14 @@ func (l *HookedLogger) Reopen() error {
 		return nil
 	}
 	return l.h.Reopen()
+}
+
+// Reopen closes the log file and re-opens it
+func (l *HookedLogger) Close() error {
+	if l.h == nil {
+		return nil
+	}
+	return l.h.Close()
 }
 
 // GetLogDest Gets the file name
