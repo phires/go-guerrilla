@@ -1,8 +1,6 @@
 package backends
 
 import (
-	"io"
-
 	"github.com/emersion/go-msgauth/dkim"
 
 	"github.com/phires/go-guerrilla/mail"
@@ -16,47 +14,7 @@ func init() {
 	}
 }
 
-type DKIMConfig struct {
-	Test bool `json:"dkim_test"`
-}
-
-type DKIMProcessor struct {
-	config *DKIMConfig
-}
-
-func (d DKIMProcessor) verify(r io.Reader) ([]*dkim.Verification, error) {
-
-	if d.config.Test {
-		return dkim.VerifyWithOptions(r, &dkim.VerifyOptions{
-			LookupTXT: func(domain string) ([]string, error) {
-				if domain == "guerrilla.test" {
-					return []string{"v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC4xKeUgQ+Aoz7TLfAfs9+paePb5KIofVthEopwrXFkp8OCeocaTHt9ICjTT2QeJh6cZaDaArfZ+YbG4OD/Slg5f1LzdRuntimeError"}, nil
-				}
-				return nil, nil
-			},
-		})
-	} else {
-		return dkim.Verify(r)
-	}
-
-}
-
 func DKIM() Decorator {
-	var config *DKIMConfig
-	s := &DKIMProcessor{}
-
-	initFunc := InitializeWith(func(backendConfig BackendConfig) error {
-		configType := BaseConfig(&DKIMConfig{})
-		bcfg, err := Svc.ExtractConfig(backendConfig, configType)
-		if err != nil {
-			return err
-		}
-		config = bcfg.(*DKIMConfig)
-		s.config = config
-		return nil
-	})
-	Svc.AddInitializer(initFunc)
-
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
 			if task == TaskSaveMail {

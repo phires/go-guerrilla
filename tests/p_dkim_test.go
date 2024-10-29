@@ -10,36 +10,23 @@ import (
 	"github.com/phires/go-guerrilla/mail"
 )
 
-const verifiedMailString = `DKIM-Signature: v=1; a=rsa-sha256; s=brisbane; d=example.com;
-      c=simple/simple; q=dns/txt; i=joe@football.example.com;
-      h=Received : From : To : Subject : Date : Message-ID;
-      bh=2jUSOH9NhtVGCQWNr9BrIAPreKQjO6Sn7XIkfJVOzv8=;
-      b=AuUoFEfDxTDkHlLXSZEpZj79LICEps6eda7W3deTVFOk4yAUoqOB
-      4nujc7YopdG5dWLSdNg6xNAZpOPr+kHxt1IrE+NahM6L/LbvaHut
-      KVdkLLkpVaVVQPzeRDI009SO2Il5Lu7rDNH6mZckBdrIx0orEtZV
-      4bmp/YzhwvcubU4=;
-Received: from client1.football.example.com  [192.0.2.1]
-      by submitserver.example.com with SUBMISSION;
-      Fri, 11 Jul 2003 21:01:54 -0700 (PDT)
-From: Joe SixPack <joe@football.example.com>
-To: Suzie Q <suzie@shopping.example.net>
-Subject: Is dinner ready?
+const verifiedMailString = `DKIM-Signature: a=ed25519-sha256; bh=hfkNii+Z1I8AuAqwGcLOA6raVsIfm/K8PWWhoV6jopM=;
+ c=simple/simple; d=pkarc.dev; h=From:To:Subject:Date:Message-ID; s=grrla;
+ t=424242; v=1;
+ b=Pvrtqdonu3vmjeNmw61R+/bBJ5lhtpmZPvDWKdzZ/srfIujuD3xtqLwEUtmVRPdPzl2kvKvO
+ Vk3wQKP0p45gDA==
+From: Ivan Jaramillo <ivan@pkarc.dev>
+To: Phillipe Resch <phil@2kd.de>
+Subject: Is dkim ready?
 Date: Fri, 11 Jul 2003 21:00:37 -0700 (PDT)
-Message-ID: <20030712040037.46341.5F8J@football.example.com>
+Message-ID: <20030712040037.46341.5F8J@pkarc.dev>
 
 Hi.
 
-We lost the game. Are you hungry yet?
+DKIM is ready.
 
-Joe.
+Pkarc.
 `
-
-// public key for testing dns/txt query method
-const dnsPublicKey = "v=DKIM1; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQ" +
-	"KBgQDwIRP/UC3SBsEmGqZ9ZJW3/DkMoGeLnQg1fWn7/zYt" +
-	"IxN2SnFCjxOCKG9v3b4jYfcTNh5ijSsq631uBItLa7od+v" +
-	"/RtdC2UzJ1lWT947qR+Rcac2gbto/NMqJ0fzfVjH4OuKhi" +
-	"tdY9tf6mcwGjaNBcWToIMmPSPDdQPNUYckcQ2QIDAQAB"
 
 func TestDKIM(t *testing.T) {
 
@@ -49,7 +36,7 @@ func TestDKIM(t *testing.T) {
 	l, _ := log.GetLogger("./test_dkim.log", "debug")
 	g, err := backends.New(backends.BackendConfig{
 		"save_process":      "HeadersParser|DKIM",
-		"primary_mail_host": "example.com",
+		"primary_mail_host": "pkarc.dev",
 	}, l)
 	if err != nil {
 		t.Error(err)
