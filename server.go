@@ -592,7 +592,7 @@ func (s *server) handleClient(client *client) {
 				break
 			}
 
-			res := s.backend().Process(client.Envelope)
+			res := s.backend().Process(client.Envelope, backends.TaskSaveMail)
 			if res.Code() < 300 {
 				client.messagesSent++
 			}

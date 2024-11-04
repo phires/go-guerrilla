@@ -1,25 +1,24 @@
-package test
+package backends
 
 import (
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/phires/go-guerrilla/backends"
 	"github.com/phires/go-guerrilla/log"
 	"github.com/phires/go-guerrilla/mail"
 )
 
 const verifiedMailString = `DKIM-Signature: a=ed25519-sha256; bh=hfkNii+Z1I8AuAqwGcLOA6raVsIfm/K8PWWhoV6jopM=;
- c=simple/simple; d=pkarc.dev; h=From:To:Subject:Date:Message-ID; s=grrla;
- t=424242; v=1;
- b=Pvrtqdonu3vmjeNmw61R+/bBJ5lhtpmZPvDWKdzZ/srfIujuD3xtqLwEUtmVRPdPzl2kvKvO
- Vk3wQKP0p45gDA==
-From: Ivan Jaramillo <ivan@pkarc.dev>
-To: Phillipe Resch <phil@2kd.de>
+ c=simple/simple; d=example.com; h=From:To:Subject:Date:Message-ID;
+ s=grrla; t=424242; v=1;
+ b=7FJvQ6xDPl9je9besXRXtZMSvRFnyw0zwfplfa+9gPcQ54r6GH/tlJECkW5f0DaKbXUm91d9
+ wCYumq0YEDxMBg==
+From: Pkarc <pkarc@example.com>
+To: phires <phires@example.com>
 Subject: Is dkim ready?
-Date: Fri, 11 Jul 2003 21:00:37 -0700 (PDT)
-Message-ID: <20030712040037.46341.5F8J@pkarc.dev>
+Date: Mon, 4 Nov 2024 21:00:37 -0500 (PDT)
+Message-ID: <20030712040037.46341.5F8J@example.com>
 
 Hi.
 
@@ -34,9 +33,9 @@ func TestDKIM(t *testing.T) {
 	e.Data.WriteString(verifiedMailString)
 
 	l, _ := log.GetLogger("./test_dkim.log", "debug")
-	g, err := backends.New(backends.BackendConfig{
+	g, err := New(BackendConfig{
 		"save_process":      "HeadersParser|DKIM",
-		"primary_mail_host": "pkarc.dev",
+		"primary_mail_host": "example.com",
 	}, l)
 	if err != nil {
 		t.Error(err)
@@ -53,8 +52,8 @@ func TestDKIM(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if gateway, ok := g.(*backends.BackendGateway); ok {
-		r := gateway.Process(e)
+	if gateway, ok := g.(*BackendGateway); ok {
+		r := gateway.Process(e, TaskTest)
 		if !strings.Contains(r.String(), "250 2.0.0 OK") {
 			t.Error("DKIM processor didn't result with expected result, it said", r)
 		}

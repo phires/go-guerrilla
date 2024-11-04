@@ -51,7 +51,8 @@ func Header() Decorator {
 
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				to := strings.TrimSpace(e.RcptTo[0].User) + "@" + config.PrimaryHost
 				hash := "unknown"
 				if len(e.Hashes) > 0 {
@@ -73,12 +74,9 @@ func Header() Decorator {
 				addHead += "	" + time.Now().Format(time.RFC1123Z) + "\n"
 				// save the result
 				e.DeliveryHeader = addHead
-				// next processor
-				return p.Process(e, task)
-
-			} else {
-				return p.Process(e, task)
 			}
+			// next processor
+			return p.Process(e, task)
 		})
 	}
 }

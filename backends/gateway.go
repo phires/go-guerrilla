@@ -127,13 +127,13 @@ func (w *workerMsg) reset(e *mail.Envelope, task SelectTask) {
 }
 
 // Process distributes an envelope to one of the backend workers with a TaskSaveMail task
-func (gw *BackendGateway) Process(e *mail.Envelope) Result {
+func (gw *BackendGateway) Process(e *mail.Envelope, task SelectTask) Result {
 	if gw.State != BackendStateRunning {
 		return NewResult(response.Canned.FailBackendNotRunning, response.SP, gw.State)
 	}
 	// borrow a workerMsg from the pool
 	workerMsg := workerMsgPool.Get().(*workerMsg)
-	workerMsg.reset(e, TaskSaveMail)
+	workerMsg.reset(e, task)
 	// place on the channel so that one of the save mail workers can pick it up
 	gw.conveyor <- workerMsg
 	// wait for the save to complete
@@ -455,7 +455,7 @@ func (gw *BackendGateway) workDispatcher(
 			return
 		case msg = <-workIn:
 			state = dispatcherStateWorking // recovers from panic if in this state
-			if msg.task == TaskSaveMail {
+			if msg.task == TaskSaveMail || msg.task == TaskTest {
 				result, err := save.Process(msg.e, msg.task)
 				state = dispatcherStateNotify
 				msg.notifyMe <- &notifyMsg{err: err, result: result, queuedID: msg.e.QueuedId}

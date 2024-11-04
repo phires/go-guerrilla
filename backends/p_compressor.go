@@ -95,16 +95,15 @@ func (c *DataCompressor) clear() {
 func Compressor() Decorator {
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				compressor := newCompressor()
 				compressor.set([]byte(e.DeliveryHeader), &e.Data)
 				// put the pointer in there for other processors to use later in the line
 				e.Values["zlib-compressor"] = compressor
-				// continue to the next Processor in the decorator stack
-				return p.Process(e, task)
-			} else {
-				return p.Process(e, task)
 			}
+			// continue to the next Processor in the decorator stack
+			return p.Process(e, task)
 		})
 	}
 }

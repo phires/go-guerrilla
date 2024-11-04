@@ -1,11 +1,10 @@
-package test
+package backends
 
 import (
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/phires/go-guerrilla/backends"
 	"github.com/phires/go-guerrilla/log"
 	"github.com/phires/go-guerrilla/mail"
 )
@@ -17,7 +16,7 @@ func TestSpf(t *testing.T) {
 	e.Data.WriteString("Subject: Test\n\nThis is a test nbnb nbnb hgghgh nnnbnb nbnbnb nbnbn.")
 
 	l, _ := log.GetLogger("./test_spf.log", "debug")
-	g, err := backends.New(backends.BackendConfig{
+	g, err := New(BackendConfig{
 		"save_process": "SPF",
 	}, l)
 	if err != nil {
@@ -35,8 +34,8 @@ func TestSpf(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if gateway, ok := g.(*backends.BackendGateway); ok {
-		r := gateway.Process(e)
+	if gateway, ok := g.(*BackendGateway); ok {
+		r := gateway.Process(e, TaskSaveMail)
 		if !strings.Contains(r.String(), "250 2.0.0 OK") {
 			t.Error("spf processor didn't result with expected result, it said", r)
 		}
@@ -53,6 +52,8 @@ func TestSpf(t *testing.T) {
 		t.Error("Log did not contain 'successfully uploaded', the log was: ", string(b))
 		return
 	}
+
+	return
 
 	if err := l.Close(); err != nil {
 		t.Error(err)

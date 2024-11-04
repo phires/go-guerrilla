@@ -35,8 +35,8 @@ func init() {
 func Hasher() Decorator {
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				// base hash, use subject from and timestamp-nano
 				h := md5.New()
 				ts := fmt.Sprintf("%d", time.Now().UnixNano())
@@ -50,11 +50,9 @@ func Hasher() Decorator {
 					sum := h2.Sum([]byte{})
 					e.Hashes = append(e.Hashes, fmt.Sprintf("%x", sum))
 				}
-				return p.Process(e, task)
-			} else {
-				return p.Process(e, task)
 			}
-
+			//next processor
+			return p.Process(e, task)
 		})
 	}
 }

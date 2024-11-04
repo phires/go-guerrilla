@@ -223,8 +223,8 @@ func SQL() Decorator {
 
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				var to, body string
 
 				hash := ""
@@ -305,13 +305,10 @@ func SQL() Decorator {
 					stmt := s.prepareInsertQuery(1, db)
 					err := s.doQuery(1, db, stmt, &vals)
 					if err != nil {
-						return NewResult(fmt.Sprint("554 Error: could not save email")), StorageError
+						return NewResult("554 Error: could not save email"), StorageError
 					}
 				}
-
-				// continue to the next Processor in the decorator chain
-				return p.Process(e, task)
-			} else if task == TaskValidateRcpt {
+			case TaskValidateRcpt:
 				// if you need to validate the e.Rcpt then change to:
 				if len(e.RcptTo) > 0 {
 					// since this is called each time a recipient is added
@@ -322,12 +319,9 @@ func SQL() Decorator {
 						return NewResult(response.Canned.FailRcptCmd), NoSuchUser
 					}
 				}
-				// continue to the next processor
-				return p.Process(e, task)
-			} else {
-				return p.Process(e, task)
 			}
-
+			// next processor
+			return p.Process(e, task)
 		})
 	}
 }

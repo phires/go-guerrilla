@@ -10,6 +10,7 @@ const (
 	TaskSaveMail SelectTask = iota
 	TaskValidateRcpt
 	TaskSecurityChecks
+	TaskTest
 )
 
 func (o SelectTask) String() string {
@@ -20,6 +21,8 @@ func (o SelectTask) String() string {
 		return "validate recipient"
 	case TaskSecurityChecks:
 		return "check security"
+	case TaskTest:
+		return "test"
 	}
 	return "[unnamed task]"
 }
