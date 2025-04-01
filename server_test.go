@@ -925,39 +925,43 @@ func TestProxy(t *testing.T) {
 		server.handleClient(client)
 		wg.Done()
 	}()
-	// Wait for the greeting from the server
-	r := textproto.NewReader(bufio.NewReader(conn.Client))
-	line, _ := r.ReadLine()
 
-	// PROXY command is sent before anything else
 	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
+	r := textproto.NewReader(bufio.NewReader(conn.Client))
+
+	// PROXY header is sent before anything else
 	if err := w.PrintfLine("PROXY TCP4 1.2.3.4 127.0.0.1 12345 25"); err != nil {
 		t.Error(err)
 	}
-	// We do not expect anything back from the PROXY command
-	// TODO: For some reason, client.RemoteIP contains "tcp" - whereever this
-	//       may come from. Therefore for now we're skipping the test if the
-	//       parsing was successfull.
-	/*
-		if client.RemoteIP != "1.2.3.4" {
-			t.Error("client.RemoteIP should be 1.2.3.4, but got:", client.RemoteIP)
-		}
-	*/
-	// try malformed input
-	if err := w.PrintfLine("PROXY c"); err != nil {
-		t.Error(err)
-	}
-	line, _ = r.ReadLine()
 
-	expected := "550 5.5.2 Syntax error"
-	if strings.Index(line, expected) != 0 {
-		t.Error("expected", expected, "but got:", line)
+	// Wait for the greeting from the server
+	line, err := r.ReadLine()
+	if err != nil {
+		t.Error("Got an error after sending PROXY header:", err)
+	} else if !strings.HasPrefix(line, "220") {
+		t.Error("Expected a 220 response, got:", line)
 	}
 
-	if err := w.PrintfLine("QUIT"); err != nil {
+	if client.RemoteIP != "1.2.3.4" {
+		t.Error("client.RemoteIP should be 1.2.3.4, but got:", client.RemoteIP)
+	}
+
+	// Ensure the server doesn't allow multiple PROXY headers
+	// https://github.com/phires/go-guerrilla/security/advisories/GHSA-c2c3-pqw5-5p7c
+	if err = w.PrintfLine("PROXY TCP4 1.2.3.5 127.0.0.1 12345 25"); err != nil {
 		t.Error(err)
 	}
-	line, _ = r.ReadLine()
+	if line, err = r.ReadLine(); err != nil {
+		t.Error(err)
+	}
+	if !strings.HasPrefix(line, "554 5.5.1 ") {
+		t.Error("Expected a 554 5.5.1 response, got:", line)
+	}
+
+	if err = w.PrintfLine("QUIT"); err != nil {
+		t.Error(err)
+	}
+	_, _ = r.ReadLine()
 	wg.Wait() // wait for handleClient to exit
 }
 

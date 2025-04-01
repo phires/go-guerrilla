@@ -21,8 +21,12 @@ import (
 type ClientState int
 
 const (
-	// The client has connected, and is awaiting our first response
-	ClientGreeting = iota
+	// The client has connected
+	ClientConnected = iota
+	// We're awaiting a PROXY header from the client
+	ClientProxy
+	// The client is awaiting our first response
+	ClientGreeting
 	// We have responded to the client's connection and are awaiting a command
 	ClientCmd
 	// We have received the sender and recipient information
