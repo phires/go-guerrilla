@@ -23,6 +23,7 @@ var hookMu sync.Mutex
 type LoggerHook interface {
 	log.Hook
 	Reopen() error
+	Close() error
 }
 type LogrusHook struct {
 	w io.Writer
@@ -200,4 +201,18 @@ func (hook *LogrusHook) Reopen() error {
 // the filemode was hardcoded.
 func getFileMode(fm os.FileMode) os.FileMode {
 	return fm | os.FileMode(defaultFileMode)
+}
+
+// Close closes the log file descriptor
+func (hook *LogrusHook) Close() error {
+	hookMu.Lock()
+	defer hookMu.Unlock()
+	if hook.fd != nil {
+		if err := hook.fd.Close(); err != nil {
+			hook.fd = nil
+			return err
+		}
+	}
+	return nil
+
 }

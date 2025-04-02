@@ -35,7 +35,7 @@ type ProcessorConstructor func() Decorator
 // whether the message was processed successfully.
 type Backend interface {
 	// Process processes then saves the mail envelope
-	Process(*mail.Envelope) Result
+	Process(*mail.Envelope, SelectTask) Result
 	// ValidateRcpt validates the last recipient that was pushed to the mail envelope
 	ValidateRcpt(e *mail.Envelope) RcptError
 	// Initializes the backend, eg. creates folders, sets-up database connections

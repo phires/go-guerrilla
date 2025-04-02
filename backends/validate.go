@@ -14,4 +14,6 @@ var (
 	QuotaExceeded       = RcptError(errors.New("quota exceeded"))
 	UserSuspended       = RcptError(errors.New("user suspended"))
 	StorageError        = RcptError(errors.New("storage error"))
+	SpfError            = RcptError(errors.New("spf error"))
+	DKIMError           = RcptError(errors.New("DKIM error"))
 )

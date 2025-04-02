@@ -5,7 +5,9 @@ go 1.23.0
 toolchain go1.24.1
 
 require (
+	blitiri.com.ar/go/spf v1.5.1
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
+	github.com/emersion/go-msgauth v0.6.8
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/gomodule/redigo v1.9.2
 	github.com/sirupsen/logrus v1.9.3

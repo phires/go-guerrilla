@@ -9,3 +9,4 @@ goguerrilla.conf.api
 tests/pidfilex.pid
 tests/testlog*
 *.pem
+backends/*.logs

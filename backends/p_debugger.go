@@ -43,10 +43,13 @@ func Debugger() Decorator {
 	Svc.AddInitializer(initFunc)
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				if config.LogReceivedMails {
 					Log().Infof("Mail from: %s / to: %v", e.MailFrom.String(), e.RcptTo)
 					Log().Info("Headers are:", e.Header)
+					Log().Infof("Subject is: %s", e.Subject)
+					Log().Infof("Data is: %s", e.Data.String())
 				}
 
 				if config.SleepSec > 0 {
@@ -59,12 +62,9 @@ func Debugger() Decorator {
 					}
 
 				}
-
-				// continue to the next Processor in the decorator stack
-				return p.Process(e, task)
-			} else {
-				return p.Process(e, task)
 			}
+			// continue to the next Processor in the decorator stack
+			return p.Process(e, task)
 		})
 	}
 }

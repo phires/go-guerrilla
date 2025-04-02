@@ -24,16 +24,13 @@ func init() {
 func HeadersParser() Decorator {
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				if err := e.ParseHeaders(); err != nil {
 					Log().WithError(err).Error("parse headers error")
 				}
-				// next processor
-				return p.Process(e, task)
-			} else {
-				// next processor
-				return p.Process(e, task)
 			}
+			return p.Process(e, task)
 		})
 	}
 }

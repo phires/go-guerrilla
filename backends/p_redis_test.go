@@ -37,7 +37,7 @@ func TestRedisGeneric(t *testing.T) {
 		}
 	}()
 	if gateway, ok := g.(*BackendGateway); ok {
-		r := gateway.Process(e)
+		r := gateway.Process(e, TaskSaveMail)
 		if strings.Index(r.String(), "250 2.0.0 OK") == -1 {
 			t.Error("redis processor didn't result with expected result, it said", r)
 		}
@@ -54,6 +54,11 @@ func TestRedisGeneric(t *testing.T) {
 		if strings.Index(string(b), "SETEX") == -1 {
 			t.Error("Log did not contain SETEX, the log was: ", string(b))
 		}
+	}
+
+	if err := l.Close(); err != nil {
+		t.Error(err)
+		return
 	}
 
 	if err := os.Remove("./test_redis.log"); err != nil {

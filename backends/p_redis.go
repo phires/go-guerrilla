@@ -47,7 +47,7 @@ type RedisProcessor struct {
 }
 
 func (r *RedisProcessor) redisConnection(redisInterface string) (err error) {
-	if r.isConnected == false {
+	if !r.isConnected {
 		r.conn, err = RedisDialer("tcp", redisInterface)
 		if err != nil {
 			// handle error
@@ -90,8 +90,8 @@ func Redis() Decorator {
 
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				hash := ""
 				if len(e.Hashes) > 0 {
 					e.QueuedId = e.Hashes[0]
@@ -121,13 +121,9 @@ func Redis() Decorator {
 					result := NewResult(response.Canned.FailBackendTransaction)
 					return result, StorageError
 				}
-
-				return p.Process(e, task)
-			} else {
-				// nothing to do for this task
-				return p.Process(e, task)
 			}
-
+			// next processor
+			return p.Process(e, task)
 		})
 	}
 }

@@ -53,7 +53,7 @@ func TestSQL(t *testing.T) {
 	}
 
 	// The SQL processor is expected to use the hash to queue the mail.
-	result := backend.Process(envelope)
+	result := backend.Process(envelope, TaskSaveMail)
 	if !strings.Contains(result.String(), hash) {
 		t.Errorf("expected message to be queued with hash, got %q", result)
 	}

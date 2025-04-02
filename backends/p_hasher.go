@@ -37,8 +37,8 @@ func init() {
 func Hasher() Decorator {
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				// base hash, use subject from and timestamp-nano
 				// We are using Blake2s-128 to keep the hash 128bit log, as the MD5 hash before
 				// For the key we are using 64 bit random data
@@ -56,11 +56,9 @@ func Hasher() Decorator {
 					sum := h2.Sum([]byte{})
 					e.Hashes = append(e.Hashes, fmt.Sprintf("%x", sum))
 				}
-				return p.Process(e, task)
-			} else {
-				return p.Process(e, task)
 			}
-
+			//next processor
+			return p.Process(e, task)
 		})
 	}
 }

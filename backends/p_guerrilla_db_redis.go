@@ -406,7 +406,8 @@ func GuerrillaDbRedis() Decorator {
 
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {
-			if task == TaskSaveMail {
+			switch task {
+			case TaskSaveMail, TaskTest:
 				Log().Debug("Got mail from chan,", e.RemoteIP)
 				to = trimToLimit(strings.TrimSpace(e.RcptTo[0].User)+"@"+g.config.PrimaryHost, 255)
 				e.Helo = trimToLimit(e.Helo, 255)
@@ -480,7 +481,7 @@ func GuerrillaDbRedis() Decorator {
 				feeders[index] <- vals
 				return p.Process(e, task)
 
-			} else {
+			default:
 				return p.Process(e, task)
 			}
 		})
