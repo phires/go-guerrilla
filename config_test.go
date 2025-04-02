@@ -1,7 +1,6 @@
 package guerrilla
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -165,6 +164,51 @@ var configJsonB = `
 }
 `
 
+// TLS configuration tests
+// Copy of configuration A, but
+var configJsonC = `
+{
+    "log_file" : "./tests/testlog",
+    "log_level" : "debug",
+    "pid_file" : "tests/go-guerrilla.pid",
+    "allowed_hosts": ["spam4.me","grr.la"],
+    "backend_config" :
+        {
+            "log_received_mails" : true
+        },
+    "servers" : [
+        {
+            "is_enabled" : true,
+            "host_name":"mail.guerrillamail.com",
+            "max_size": 100017,
+            "timeout":160,
+            "listen_interface":"127.0.0.1:2526",
+            "max_clients": 2,
+			"tls" : {
+				"start_tls_on":false,
+            	"tls_always_on":false,
+				"private_key_file":"not_existing_file.pem",
+            	"public_key_file":"not_existing_file.pem"
+			}
+        },
+        {
+            "is_enabled" : false,
+            "host_name":"mail2.guerrillamail.com",
+            "max_size":1000001,
+            "timeout":180,
+            "listen_interface":"127.0.0.1:2527",
+			"max_clients":1,
+			"tls" : {
+ 				"private_key_file":"not_existing_file.pem",
+            	"public_key_file":"not_existing_file.pem",
+				"tls_always_on":false,
+            	"start_tls_on":true
+			}
+        }
+    ]
+}
+`
+
 func TestConfigLoad(t *testing.T) {
 	if err := testcert.GenerateCert("mail2.guerrillamail.com", "", 365*24*time.Hour, false, 2048, "P256", "./tests/"); err != nil {
 		t.Error(err)
@@ -178,6 +222,7 @@ func TestConfigLoad(t *testing.T) {
 		}
 	}()
 
+	// Test Configuration A
 	ac := &AppConfig{}
 	if err := ac.Load([]byte(configJsonA)); err != nil {
 		t.Error("Cannot load config |", err)
@@ -188,16 +233,32 @@ func TestConfigLoad(t *testing.T) {
 		t.Error("len(ac.Servers), expected", expectedLen, "got", len(ac.Servers))
 		t.SkipNow()
 	}
-	// did we got the timestamps?
-	if ac.Servers[0].TLS._privateKeyFileMtime <= 0 {
+	// did we got the timestamps? Yes? We shouldn't have! All TLS options are disabled on server id 0
+	if ac.Servers[0].TLS._privateKeyFileMtime > 0 {
 		t.Error("failed to read timestamp for _privateKeyFileMtime, got", ac.Servers[0].TLS._privateKeyFileMtime)
+	}
+	// on server id 1 we should have timestamps
+	if ac.Servers[1].TLS._privateKeyFileMtime <= 0 {
+		t.Error("failed to read timestamp for _privateKeyFileMtime, got", ac.Servers[1].TLS._privateKeyFileMtime)
+	}
+
+	// Test Configuration C
+	cc := &AppConfig{}
+	if err := cc.Load([]byte(configJsonC)); err != nil {
+		t.Error("Cannot load config |", err)
+		t.SkipNow()
+	}
+	expectedLen = 2
+	if len(cc.Servers) != expectedLen {
+		t.Error("len(cc.Servers), expected", expectedLen, "got", len(cc.Servers))
+		t.SkipNow()
 	}
 }
 
 // Test the sample config to make sure a valid one is given!
 func TestSampleConfig(t *testing.T) {
 	fileName := "goguerrilla.conf.sample"
-	if jsonBytes, err := ioutil.ReadFile(fileName); err == nil {
+	if jsonBytes, err := os.ReadFile(fileName); err == nil {
 		ac := &AppConfig{}
 		if err := ac.Load(jsonBytes); err != nil {
 			// sample config can have broken tls certs
@@ -225,29 +286,31 @@ func TestConfigChangeEvents(t *testing.T) {
 		}
 	}()
 
-	oldconf := &AppConfig{}
-	if err := oldconf.Load([]byte(configJsonA)); err != nil {
+	confA := &AppConfig{}
+	if err := confA.Load([]byte(configJsonA)); err != nil {
 		t.Error(err)
 	}
-	logger, _ := log.GetLogger(oldconf.LogFile, oldconf.LogLevel)
+	logger, _ := log.GetLogger(confA.LogFile, confA.LogLevel)
 	bcfg := backends.BackendConfig{"log_received_mails": true}
 	backend, err := backends.New(bcfg, logger)
 	if err != nil {
 		t.Error("cannot create backend", err)
 	}
-	app, err := New(oldconf, backend, logger)
+	app, err := New(confA, backend, logger)
 	if err != nil {
 		t.Error("cannot create daemon", err)
 	}
 	// simulate timestamp change
 
 	time.Sleep(time.Second + time.Millisecond*500)
-	if err := os.Chtimes(oldconf.Servers[1].TLS.PrivateKeyFile, time.Now(), time.Now()); err != nil {
+	if err := os.Chtimes(confA.Servers[1].TLS.PrivateKeyFile, time.Now(), time.Now()); err != nil {
 		t.Error(err)
 	}
-	if err := os.Chtimes(oldconf.Servers[1].TLS.PublicKeyFile, time.Now(), time.Now()); err != nil {
+	if err := os.Chtimes(confA.Servers[1].TLS.PublicKeyFile, time.Now(), time.Now()); err != nil {
 		t.Error(err)
 	}
+
+	// Config B
 	newconf := &AppConfig{}
 	if err := newconf.Load([]byte(configJsonB)); err != nil {
 		t.Error(err)
@@ -295,7 +358,7 @@ func TestConfigChangeEvents(t *testing.T) {
 	}
 
 	// emit events
-	newconf.EmitChangeEvents(oldconf, app)
+	newconf.EmitChangeEvents(confA, app)
 	// unsubscribe
 	for unevent, unfun := range toUnsubscribe {
 		_ = app.Unsubscribe(unevent, unfun)
@@ -311,7 +374,7 @@ func TestConfigChangeEvents(t *testing.T) {
 	}
 
 	// don't forget to reset
-	if err := os.Truncate(oldconf.LogFile, 0); err != nil {
+	if err := os.Truncate(confA.LogFile, 0); err != nil {
 		t.Error(err)
 	}
 }

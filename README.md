@@ -199,8 +199,10 @@ Use as a Daemon
 ### Other topics
 
 - [Using Nginx as a proxy](https://github.com/phires/go-guerrilla/wiki/Using-Nginx-as-a-proxy)
+- [Using HAProxy](https://github.com/phires/go-guerrilla/wiki/Using-HAProxy)
 - [Testing STARTTLS](https://github.com/phires/go-guerrilla/wiki/Running-from-command-line#testing-starttls)
 - [Benchmarking](https://github.com/phires/go-guerrilla/wiki/Profiling#benchmarking)
+
 
 
 Email Processing Backend
@@ -248,7 +250,7 @@ Have a processor that you would like to share? Submit a PR to add it to the list
 Releases
 ========
 
-Current release: 1.6.1, tagged on Dec 28, 2019 (Pull requests from #129 to #203)
+Current release: 1.6.6, tagged on Jun 6, 2024 
 
 Next Planned release: 2.0.0 - TBA
 
@@ -270,6 +272,10 @@ Credits
 
 Project Lead: 
 -------------
+Philipp Resch, Contact: phil@2kd.de
+
+Former Project Lead:
+--------------------
 Flashmob, GuerrillaMail.com, Contact: flashmob@gmail.com
 
 Major Contributors: 
@@ -277,7 +283,6 @@ Major Contributors:
 
 * Reza Mohammadi https://github.com/remohammadi
 * Jordan Schalm https://github.com/jordanschalm 
-* Philipp Resch https://github.com/phires
 
 Thanks to:
 ----------

@@ -76,7 +76,8 @@ type HookedLogger struct {
 	// destination, file name or "stderr", "stdout" or "off"
 	dest string
 
-	oo OutputOption
+	// unused
+	//oo OutputOption
 }
 
 type loggerKey struct {

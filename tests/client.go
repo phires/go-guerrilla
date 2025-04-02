@@ -18,7 +18,7 @@ func Connect(serverConfig guerrilla.ServerConfig, deadline time.Duration) (net.C
 	if serverConfig.TLS.AlwaysOn {
 		// start tls automatically
 		conn, err = tls.Dial("tcp", serverConfig.ListenInterface, &tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: true, // #nosec G402 -- local test only with self-signed cert
 			ServerName:         "127.0.0.1",
 		})
 	} else {

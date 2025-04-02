@@ -139,7 +139,7 @@ func GenerateCert(host string, validFrom string, validFor time.Duration, isCA bo
 		log.Fatalf("Failed to create certificate: %s", err)
 	}
 
-	certOut, err := os.Create(dirPrefix + host + ".cert.pem")
+	certOut, err := os.Create(dirPrefix + host + ".cert.pem") // #nosec G304 -- doesn't matter for tests
 	if err != nil {
 		log.Fatalf("failed to open cert.pem for writing: %s", err)
 	}
@@ -154,7 +154,7 @@ func GenerateCert(host string, validFrom string, validFor time.Duration, isCA bo
 		return
 	}
 
-	keyOut, err := os.OpenFile(dirPrefix+host+".key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyOut, err := os.OpenFile(dirPrefix+host+".key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) // #nosec G304 -- doesn't matter for tests
 	if err != nil {
 		log.Print("failed to open key.pem for writing:", err)
 		return

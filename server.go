@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,6 +83,13 @@ var (
 	cmdQUIT     command = []byte("QUIT")
 	cmdDATA     command = []byte("DATA")
 	cmdSTARTTLS command = []byte("STARTTLS")
+	// PROXY isn't part of the SMTP protocol; instead, it encapsulates the SMTP conversation.
+	// The conversation is prefixed with a header that always starts with []byte("PROXY "),
+	// so we can reuse the command logic.
+	cmdPROXY command = []byte("PROXY ")
+	// PROXY v2 binary format header. Not currently supported, but we can at least
+	// detect it and emit a helpful error.
+	cmdPROXY2 command = []byte("\x0D\x0A\x0D\x0A\x00\x0D\x0AQUIT\x0A")
 )
 
 func (c command) match(in []byte) bool {
@@ -131,6 +139,7 @@ func (s *server) configureTLS() error {
 			Certificates: []tls.Certificate{cert},
 			ClientAuth:   tls.VerifyClientCertIfGiven,
 			ServerName:   sConfig.Hostname,
+			MinVersion:   tls.VersionTLS10, // #nosec G402 -- we need to keep at least TLS1.0 for backward compatibility
 		}
 		if len(sConfig.TLS.Protocols) > 0 {
 			if min, ok := TLSProtocols[sConfig.TLS.Protocols[0]]; ok {
@@ -336,18 +345,34 @@ const commandSuffix = "\r\n"
 
 // Reads from the client until a \n terminator is encountered,
 // or until a timeout occurs.
+//
+// Removes the trailing \n and and any preceding \r.
+//
+// Note that the returned slice is only valid until the next
+// read. Callers are responsible for copying the data if it must
+// persist between reads.
 func (s *server) readCommand(client *client) ([]byte, error) {
 	//var input string
 	var err error
 	var bs []byte
 	// In command state, stop reading at line breaks
-	bs, err = client.bufin.ReadSlice('\n')
+	bs, err = s.readSlice(client, '\n')
 	if err != nil {
 		return bs, err
 	} else if bytes.HasSuffix(bs, []byte(commandSuffix)) {
 		return bs[:len(bs)-2], err
 	}
 	return bs[:len(bs)-1], err
+}
+
+// Reads from the client until delim is encountered. The delimiter
+// is preserved.
+//
+// Note that the returned slice is only valid until the next
+// read. Callers are responsible for copying the data if it must
+// persist between reads.
+func (s *server) readSlice(client *client, delim byte) ([]byte, error) {
+	return client.bufin.ReadSlice(delim)
 }
 
 // flushResponse a response to the client. Flushes the client.bufout buffer to the connection
@@ -405,9 +430,95 @@ func (s *server) handleClient(client *client) {
 	r := response.Canned
 	for client.isAlive() {
 		switch client.state {
+		case ClientConnected:
+			if sc.ProxyOn {
+				client.state = ClientProxy
+			} else {
+				client.state = ClientGreeting
+			}
+
+		case ClientProxy:
+			// Worst case v1 header length is 107 bytes per https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt#:~:text=The%20maximum%20line%20lengths%20the%20receiver%20must%20support%20including%20the%20CRLF%20are
+			client.bufin.setLimit(107)
+			input, err := s.readSlice(client, '\n')
+			if err != nil {
+				// We don't care about the specific error; regardless of the error type, we need to kill the connection
+				s.log().WithError(err).Warnf("Error reading PROXY header from %s. Disable \"proxyon\" in your configuration file if you're not using a reverse proxy.", client.RemoteIP)
+				// Depending on the error, the client might already be dead.
+				if client.isAlive() {
+					client.kill()
+				}
+				return
+			}
+
+			// PROXY is its own protocol; it's not part of SMTP, and it has different constraints.
+			// Notably:
+			//  - The prefix must be exactly []byte("PROXY ") (note the space)
+			//  - All parameters must be separated by exactly one space
+			//  - The header must be terminated by []byte("\r\n"), not just '\n'
+			if cmdPROXY.match(input) && bytes.HasSuffix(input, []byte("\r\n")) {
+				// Any data we use from params/input must be copied if it persists beyond this loop.
+				input = input[0 : len(input)-2] // Remove trailing "\r\n"
+				s.log().Debugf("Received PROXY header: %s", input)
+
+				params := bytes.Split(input, []byte{' '})
+				params = params[1:] // Remove "PROXY" prefix
+				if len(params) < 1 {
+					s.log().Fatal("logic error: because we check for \"PROXY \", including the trailing space, we should see at least one param")
+					client.kill()
+					return
+				}
+
+				proto := string(params[0])
+				switch proto {
+				case "UNKNOWN":
+					// Remaining params are optional.
+					client.RemoteIP = ""
+					s.log().Infof("Proxying from %s", proto)
+				case "TCP4", "TCP6":
+					ipStr := string(params[1])
+					if ip, err := netip.ParseAddr(ipStr); err != nil {
+						s.log().WithError(err).Errorf("Invalid IP address in PROXY header from %s: %s", client.RemoteIP, string(params[1]))
+						client.kill()
+						return
+					} else if ipStr != ip.String() {
+						s.log().Errorf("Source IP address in PROXY header must be normalized per proxy protocol spec, but the IP address sent by the proxy isn't normalized. Received %s, but the normalized form is %s.", ipStr, ip.String())
+						client.kill()
+						return
+					} else if ip.Is4() != (proto == "TCP4") {
+						var ipVersion string
+						if ip.Is4() {
+							ipVersion = "IPv4"
+						} else {
+							ipVersion = "IPv6"
+						}
+						s.log().Errorf("PROXY header specified protocol %s, but offered an %s address: %v", proto, ipVersion, ip)
+					}
+					// TODO We may want to validate the destination IP address, source port, and destination port as well.
+					client.RemoteIP = ipStr
+					s.log().Infof("Proxying from %s %v", proto, ipStr)
+				default:
+					s.log().Errorf("PROXY header specified unknown protocol %s", proto)
+					client.kill()
+					return
+				}
+				client.state = ClientGreeting
+			} else if cmdPROXY2.match(input) {
+				// Note: If we ever decide to support v2, we need to re-evaluate the previous call to
+				// client.bufin.setLimit. The limit we currently set--107 bytes--is for v1.
+				s.log().Warnf("Received a connection with a PROXY v2 binary header, but we only support v1: %s", client.RemoteIP)
+				client.kill()
+				return
+			} else {
+				s.log().Warnf("Initial command wasn't a valid PROXY header from %s. Disable \"proxyon\" in your configuration file if you're not using a reverse proxy.", client.RemoteIP)
+				client.kill()
+				return
+			}
+
 		case ClientGreeting:
 			client.sendResponse(greeting)
 			client.state = ClientCmd
+
 		case ClientCmd:
 			client.bufin.setLimit(CommandLineMaxLength)
 			input, err := s.readCommand(client)
@@ -489,6 +600,7 @@ func (s *server) handleClient(client *client) {
 					}
 				}
 				client.sendResponse(r.SuccessMailCmd)
+
 			case cmdMAIL.match(cmd):
 				if client.isInTransaction() {
 					client.sendResponse(r.FailNestedMailCmd)

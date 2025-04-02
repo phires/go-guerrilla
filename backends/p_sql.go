@@ -92,7 +92,7 @@ func (s *SQLProcessor) connect() (*sql.DB, error) {
 	}
 
 	// do we have permission to access the table?
-	_, err = db.Query("SELECT mail_id FROM " + s.config.Table + " LIMIT 1")
+	_, err = db.Query(fmt.Sprintf("SELECT mail_id FROM %s LIMIT 1", s.config.Table))
 	if err != nil {
 		return nil, err
 	}

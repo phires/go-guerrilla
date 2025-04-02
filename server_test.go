@@ -906,6 +906,65 @@ func TestXClient(t *testing.T) {
 	wg.Wait() // wait for handleClient to exit
 }
 
+func TestProxy(t *testing.T) {
+	var mainlog log.Logger
+	var logOpenError error
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfig()
+	sc.ProxyOn = true
+	mainlog, logOpenError = log.GetLogger(sc.LogFile, "debug")
+	if logOpenError != nil {
+		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
+	}
+	conn, server := getMockServerConn(sc, t)
+	// call the serve.handleClient() func in a goroutine.
+	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		server.handleClient(client)
+		wg.Done()
+	}()
+
+	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
+	r := textproto.NewReader(bufio.NewReader(conn.Client))
+
+	// PROXY header is sent before anything else
+	if err := w.PrintfLine("PROXY TCP4 1.2.3.4 127.0.0.1 12345 25"); err != nil {
+		t.Error(err)
+	}
+
+	// Wait for the greeting from the server
+	line, err := r.ReadLine()
+	if err != nil {
+		t.Error("Got an error after sending PROXY header:", err)
+	} else if !strings.HasPrefix(line, "220") {
+		t.Error("Expected a 220 response, got:", line)
+	}
+
+	if client.RemoteIP != "1.2.3.4" {
+		t.Error("client.RemoteIP should be 1.2.3.4, but got:", client.RemoteIP)
+	}
+
+	// Ensure the server doesn't allow multiple PROXY headers
+	// https://github.com/phires/go-guerrilla/security/advisories/GHSA-c2c3-pqw5-5p7c
+	if err = w.PrintfLine("PROXY TCP4 1.2.3.5 127.0.0.1 12345 25"); err != nil {
+		t.Error(err)
+	}
+	if line, err = r.ReadLine(); err != nil {
+		t.Error(err)
+	}
+	if !strings.HasPrefix(line, "554 5.5.1 ") {
+		t.Error("Expected a 554 5.5.1 response, got:", line)
+	}
+
+	if err = w.PrintfLine("QUIT"); err != nil {
+		t.Error(err)
+	}
+	_, _ = r.ReadLine()
+	wg.Wait() // wait for handleClient to exit
+}
+
 // The backend gateway should time out after 1 second because it sleeps for 2 sec.
 // The transaction should wait until finished, and then test to see if we can do
 // a second transaction
