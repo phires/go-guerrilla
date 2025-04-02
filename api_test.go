@@ -501,7 +501,7 @@ func talkToServer(address string) (err error) {
 		return
 	}
 	in := bufio.NewReader(conn)
-	str, err := in.ReadString('\n')
+	_, err = in.ReadString('\n')
 	if err != nil {
 		return err
 	}
@@ -509,7 +509,7 @@ func talkToServer(address string) (err error) {
 	if err != nil {
 		return err
 	}
-	str, err = in.ReadString('\n')
+	_, err = in.ReadString('\n')
 	if err != nil {
 		return err
 	}
@@ -517,7 +517,7 @@ func talkToServer(address string) (err error) {
 	if err != nil {
 		return err
 	}
-	str, err = in.ReadString('\n')
+	_, err = in.ReadString('\n')
 	if err != nil {
 		return err
 	}
@@ -525,7 +525,7 @@ func talkToServer(address string) (err error) {
 	if err != nil {
 		return err
 	}
-	str, err = in.ReadString('\n')
+	_, err = in.ReadString('\n')
 	if err != nil {
 		return err
 	}
@@ -533,7 +533,7 @@ func talkToServer(address string) (err error) {
 	if err != nil {
 		return err
 	}
-	str, err = in.ReadString('\n')
+	_, err = in.ReadString('\n')
 	if err != nil {
 		return err
 	}
@@ -553,11 +553,11 @@ func talkToServer(address string) (err error) {
 	if err != nil {
 		return err
 	}
-	str, err = in.ReadString('\n')
+	_, err = in.ReadString('\n')
 	if err != nil {
 		return err
 	}
-	_ = str
+
 	return nil
 }
 

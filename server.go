@@ -50,11 +50,12 @@ type server struct {
 	timeout         atomic.Value // stores time.Duration
 	listenInterface string
 	clientPool      *Pool
-	wg              sync.WaitGroup // for waiting to shutdown
-	listener        net.Listener
-	closedListener  chan bool
-	hosts           allowedHosts // stores map[string]bool for faster lookup
-	state           int
+	//lint:ignore U1000 unused
+	wg             sync.WaitGroup // for waiting to shutdown
+	listener       net.Listener
+	closedListener chan bool
+	hosts          allowedHosts // stores map[string]bool for faster lookup
+	state          int
 	// If log changed after a config reload, newLogStore stores the value here until it's safe to change it
 	logStore     atomic.Value
 	mainlogStore atomic.Value
@@ -242,8 +243,7 @@ func (s *server) setAllowedHosts(allowedHosts []string) {
 
 // Begin accepting SMTP clients. Will block unless there is an error or server.Shutdown() is called
 func (s *server) Start(startWG *sync.WaitGroup) error {
-	var clientID uint64
-	clientID = 0
+	var clientID uint64 = 0
 
 	listener, err := net.Listen("tcp", s.listenInterface)
 	s.listener = listener
