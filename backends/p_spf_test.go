@@ -54,15 +54,4 @@ func TestSpf(t *testing.T) {
 	}
 
 	return
-
-	if err := l.Close(); err != nil {
-		t.Error(err)
-		return
-	}
-
-	if err := os.Remove("./test_spf.log"); err != nil {
-		t.Error(err)
-		return
-	}
-
 }
