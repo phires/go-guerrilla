@@ -233,8 +233,7 @@ func (s *service) shutdown() Errors {
 // processor.
 func (s *service) AddProcessor(name string, p ProcessorConstructor) {
 	// wrap in a constructor since we want to defer calling it
-	var c ProcessorConstructor
-	c = func() Decorator {
+	c := func() Decorator {
 		return p()
 	}
 	// add to our processors list

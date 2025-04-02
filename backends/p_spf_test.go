@@ -52,6 +52,4 @@ func TestSpf(t *testing.T) {
 		t.Error("Log did not contain 'successfully uploaded', the log was: ", string(b))
 		return
 	}
-
-	return
 }

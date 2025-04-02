@@ -1,7 +1,6 @@
 package backends
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +11,7 @@ import (
 
 func TestStates(t *testing.T) {
 	gw := BackendGateway{}
-	str := fmt.Sprintf("%s", gw.State)
+	str := gw.State.String()
 	if strings.Index(str, "NewState") != 0 {
 		t.Error("Backend should begin in NewState")
 	}
