@@ -3,9 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/phires/go-guerrilla"
 	"github.com/phires/go-guerrilla/log"
@@ -59,47 +56,6 @@ func init() {
 	serveCmd.PersistentFlags().StringVarP(&pidFile, "pidFile", "p",
 		"", "Path to the pid file")
 	rootCmd.AddCommand(serveCmd)
-}
-
-func sigHandler() {
-	signal.Notify(signalChannel,
-		syscall.SIGHUP,
-		syscall.SIGTERM,
-		syscall.SIGQUIT,
-		syscall.SIGINT,
-		syscall.SIGKILL,
-		//syscall.SIGUSR1,
-		os.Kill,
-	)
-	for sig := range signalChannel {
-		if sig == syscall.SIGHUP {
-			if ac, err := readConfig(configPath, pidFile); err == nil {
-				_ = d.ReloadConfig(*ac)
-			} else {
-				mainlog.WithError(err).Error("Could not reload config")
-			}
-			/* } else if sig == syscall.SIGUSR1 {
-			if err := d.ReopenLogs(); err != nil {
-				mainlog.WithError(err).Error("reopening logs failed")
-			} */
-		} else if sig == syscall.SIGTERM || sig == syscall.SIGQUIT || sig == syscall.SIGINT || sig == os.Kill {
-			mainlog.Infof("Shutdown signal caught")
-			go func() {
-				select {
-				// exit if graceful shutdown not finished in 60 sec.
-				case <-time.After(time.Second * 60):
-					mainlog.Error("graceful shutdown timed out")
-					os.Exit(1)
-				}
-			}()
-			d.Shutdown()
-			mainlog.Infof("Shutdown completed, exiting.")
-			return
-		} else {
-			mainlog.Infof("Shutdown, unknown signal caught")
-			return
-		}
-	}
 }
 
 func serve(cmd *cobra.Command, args []string) {

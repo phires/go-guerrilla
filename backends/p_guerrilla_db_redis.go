@@ -481,11 +481,9 @@ func GuerrillaDbRedis() Decorator {
 				feeders[index] <- vals
 				return p.Process(e, task)
 
-			} else {
+			default:
 				return p.Process(e, task)
 			}
-			// next processor
-			return p.Process(e, task)
 		})
 	}
 }
