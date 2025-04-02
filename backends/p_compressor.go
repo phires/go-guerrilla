@@ -87,11 +87,13 @@ func (c *DataCompressor) String() string {
 }
 
 // clear it, without clearing the pool
+/*
 func (c *DataCompressor) clear() {
 	c.ExtraHeaders = []byte{}
 	c.Data = nil
 }
-
+*/
+// Compress the email data and delivery header together
 func Compressor() Decorator {
 	return func(p Processor) Processor {
 		return ProcessWith(func(e *mail.Envelope, task SelectTask) (Result, error) {

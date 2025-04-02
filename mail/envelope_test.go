@@ -3,7 +3,6 @@ package mail
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 	"testing"
 )
@@ -116,7 +115,7 @@ func TestEnvelope(t *testing.T) {
 
 	r := e.NewReader()
 
-	data, _ := ioutil.ReadAll(r)
+	data, _ := io.ReadAll(r)
 	if len(data) != e.Len() {
 		t.Error("e.Len() is incorrect, it shown ", e.Len(), " but we wanted ", len(data))
 	}

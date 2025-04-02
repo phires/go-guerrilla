@@ -42,7 +42,7 @@ type LogrusHook struct {
 // newLogrusHook creates a new hook. dest can be a file name or one of the following strings:
 // "stderr" - log to stderr, lines will be written to os.Stdout
 // "stdout" - log to stdout, lines will be written to os.Stdout
-// "off" - no log, lines will be written to ioutil.Discard
+// "off" - no log, lines will be written to io.Discard
 func NewLogrusHook(dest string) (LoggerHook, error) {
 	hookMu.Lock()
 	defer hookMu.Unlock()

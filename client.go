@@ -53,7 +53,8 @@ type client struct {
 	bufin      *smtpBufferedReader
 	bufout     *bufio.Writer
 	smtpReader *textproto.Reader
-	ar         *adjustableLimitedReader
+	//lint:ignore U1000 unused
+	ar *adjustableLimitedReader
 	// guards access to conn
 	connGuard sync.Mutex
 	log       log.Logger
@@ -241,6 +242,10 @@ func (c *client) parsePath(in []byte, p pathParser) (mail.Address, error) {
 	return address, err
 }
 
+// rcptTo parses the recipient address
+// currently unused
+/*
 func (s *server) rcptTo() (address mail.Address, err error) {
 	return address, err
 }
+*/

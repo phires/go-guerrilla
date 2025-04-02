@@ -52,17 +52,4 @@ func TestSpf(t *testing.T) {
 		t.Error("Log did not contain 'successfully uploaded', the log was: ", string(b))
 		return
 	}
-
-	return
-
-	if err := l.Close(); err != nil {
-		t.Error(err)
-		return
-	}
-
-	if err := os.Remove("./test_spf.log"); err != nil {
-		t.Error(err)
-		return
-	}
-
 }

@@ -2,7 +2,6 @@ package log
 
 import (
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"sync"
@@ -131,7 +130,7 @@ func GetLogger(dest string, level string) (Logger, error) {
 		return l, nil
 	}
 	// we'll use the hook to output instead
-	logrus.Out = ioutil.Discard
+	logrus.Out = io.Discard
 	// setup the hook
 	h, err := NewLogrusHook(dest)
 	if err != nil {
@@ -159,11 +158,11 @@ func newLogrus(o OutputOption, level string) (*log.Logger, error) {
 		} else if o == OutputStdout {
 			out = os.Stdout
 		} else if o == OutputOff {
-			out = ioutil.Discard
+			out = io.Discard
 		}
 	} else {
 		// we'll use a hook to output instead
-		out = ioutil.Discard
+		out = io.Discard
 	}
 
 	logger := &log.Logger{

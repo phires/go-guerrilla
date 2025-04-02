@@ -1,7 +1,6 @@
 package backends
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -38,7 +37,7 @@ func TestRedisGeneric(t *testing.T) {
 	}()
 	if gateway, ok := g.(*BackendGateway); ok {
 		r := gateway.Process(e, TaskSaveMail)
-		if strings.Index(r.String(), "250 2.0.0 OK") == -1 {
+		if !strings.Contains(r.String(), "250 2.0.0 OK") {
 			t.Error("redis processor didn't result with expected result, it said", r)
 		}
 	}
@@ -47,11 +46,11 @@ func TestRedisGeneric(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if b, err := ioutil.ReadFile("./test_redis.log"); err != nil {
+	if b, err := os.ReadFile("./test_redis.log"); err != nil {
 		t.Error(err)
 		return
 	} else {
-		if strings.Index(string(b), "SETEX") == -1 {
+		if !strings.Contains(string(b), "SETEX") {
 			t.Error("Log did not contain SETEX, the log was: ", string(b))
 		}
 	}

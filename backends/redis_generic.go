@@ -28,6 +28,7 @@ func (m *RedisMockConn) Do(commandName string, args ...interface{}) (reply inter
 	return nil, nil
 }
 
+//lint:ignore U1000 Ignore unused function as we might need it later on
 type dialOptions struct {
 	readTimeout  time.Duration
 	writeTimeout time.Duration
@@ -37,6 +38,7 @@ type dialOptions struct {
 }
 
 type RedisDialOption struct {
+	//lint:ignore U1000 Ignore unused function as we might need it later on
 	f func(*dialOptions)
 }
 

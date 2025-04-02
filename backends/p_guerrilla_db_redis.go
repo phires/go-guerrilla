@@ -70,6 +70,8 @@ type guerrillaDBAndRedisConfig struct {
 // Load the backend config for the backend. It has already been unmarshalled
 // from the main config file 'backend' config "backend_config"
 // Now we need to convert each type and copy into the guerrillaDBAndRedisConfig struct
+// currently unused
+/*
 func (g *GuerrillaDBAndRedisBackend) loadConfig(backendConfig BackendConfig) (err error) {
 	configType := BaseConfig(&guerrillaDBAndRedisConfig{})
 	bcfg, err := Svc.ExtractConfig(backendConfig, configType)
@@ -80,15 +82,18 @@ func (g *GuerrillaDBAndRedisBackend) loadConfig(backendConfig BackendConfig) (er
 	g.config = m
 	return nil
 }
+*/
 
+// get the number of workers to use for the batcher
+// currently unused
+/*
 func (g *GuerrillaDBAndRedisBackend) getNumberOfWorkers() int {
 	return g.config.NumberOfWorkers
 }
-
+*/
 type redisClient struct {
 	isConnected bool
 	conn        RedisConn
-	time        int
 }
 
 // compressedData struct will be compressed using zlib when printed via fmt

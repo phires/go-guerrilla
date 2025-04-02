@@ -199,7 +199,7 @@ func (c *AppConfig) Load(jsonBytes []byte) error {
 		}
 		// check if any of the currently two tls options are enabled,
 		// if not, skip
-		if c.Servers[i].TLS.AlwaysOn == false && c.Servers[i].TLS.StartTLSOn == false {
+		if !(c.Servers[i].TLS.AlwaysOn || c.Servers[i].TLS.StartTLSOn) {
 			continue
 		}
 
