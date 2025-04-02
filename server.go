@@ -529,7 +529,7 @@ func (s *server) handleClient(client *client) {
 			} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				s.log().WithError(err).Warnf("Timeout: %s", client.RemoteIP)
 				return
-			} else if err == LineLimitExceeded {
+			} else if err == ErrLineLimitExceeded {
 				client.sendResponse(r.FailLineTooLong)
 				client.kill()
 				break
@@ -689,11 +689,11 @@ func (s *server) handleClient(client *client) {
 				err = fmt.Errorf("maximum DATA size exceeded (%d)", sc.MaxSize)
 			}
 			if err != nil {
-				if err == LineLimitExceeded {
-					client.sendResponse(r.FailReadLimitExceededDataCmd, " ", LineLimitExceeded.Error())
+				if err == ErrLineLimitExceeded {
+					client.sendResponse(r.FailReadLimitExceededDataCmd, " ", ErrLineLimitExceeded.Error())
 					client.kill()
-				} else if err == MessageSizeExceeded {
-					client.sendResponse(r.FailMessageSizeExceeded, " ", MessageSizeExceeded.Error())
+				} else if err == ErrMessageSizeExceeded {
+					client.sendResponse(r.FailMessageSizeExceeded, " ", ErrMessageSizeExceeded.Error())
 					client.kill()
 				} else {
 					client.sendResponse(r.FailReadErrorDataCmd, " ", err.Error())

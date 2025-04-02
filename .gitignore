@@ -10,3 +10,5 @@ tests/pidfilex.pid
 tests/testlog*
 *.pem
 backends/*.logs
+backends/test_spf.log
+tests/go-guerrilla.pid
