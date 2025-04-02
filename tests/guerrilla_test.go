@@ -31,7 +31,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"strings"
 
@@ -195,7 +194,7 @@ func TestStart(t *testing.T) {
 	}
 	time.Sleep(time.Second)
 	app.Shutdown()
-	if read, err := ioutil.ReadFile("./testlog"); err == nil {
+	if read, err := os.ReadFile("./testlog"); err == nil {
 		logOutput := string(read)
 		if i := strings.Index(logOutput, "Listening on TCP 127.0.0.1:4654"); i < 0 {
 			t.Error("Server did not listen on 127.0.0.1:4654")
@@ -299,7 +298,7 @@ func TestGreeting(t *testing.T) {
 		}
 	}
 	app.Shutdown()
-	if read, err := ioutil.ReadFile("./testlog"); err == nil {
+	if read, err := os.ReadFile("./testlog"); err == nil {
 		logOutput := string(read)
 		if i := strings.Index(logOutput, "Handle client [127.0.0.1"); i < 0 {
 			t.Error("Server did not handle any clients")
@@ -356,7 +355,7 @@ func TestShutDown(t *testing.T) {
 		}
 	}
 	// assuming server has shutdown by now
-	if read, err := ioutil.ReadFile("./testlog"); err == nil {
+	if read, err := os.ReadFile("./testlog"); err == nil {
 		logOutput := string(read)
 		//	fmt.Println(logOutput)
 		if i := strings.Index(logOutput, "Handle client [127.0.0.1"); i < 0 {
@@ -913,11 +912,11 @@ func TestNestedMailCmd(t *testing.T) {
 				t.Error("Hello command failed", err.Error())
 			}
 			// repeat > 64 characters in local part
-			response, err := Command(conn, bufin, "MAIL FROM:<test@grr.la>")
+			_, err := Command(conn, bufin, "MAIL FROM:<test@grr.la>")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
-			response, err = Command(conn, bufin, "MAIL FROM:<test@grr.la>")
+			response, err := Command(conn, bufin, "MAIL FROM:<test@grr.la>")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
@@ -1029,27 +1028,29 @@ func TestDataMaxLength(t *testing.T) {
 				t.Error("Hello command failed", err.Error())
 			}
 
-			response, err := Command(conn, bufin, "MAIL FROM:test@grr.la")
+			_, err = Command(conn, bufin, "MAIL FROM:test@grr.la")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
 			//fmt.Println(response)
-			response, err = Command(conn, bufin, "RCPT TO:<test@grr.la>")
+			_, err = Command(conn, bufin, "RCPT TO:<test@grr.la>")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
 			//fmt.Println(response)
-			response, err = Command(conn, bufin, "DATA")
+			_, err = Command(conn, bufin, "DATA")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
 
-			response, err = Command(
+			response, err := Command(
 				conn,
 				bufin,
 				fmt.Sprintf("Subject:test\r\n\r\nHello %s\r\n.\r\n",
 					strings.Repeat("n", int(config.Servers[0].MaxSize-20))))
-
+			if err != nil {
+				t.Error("command failed", err.Error())
+			}
 			//expected := "500 Line too long"
 			expected := "451 4.3.0 Error: maximum DATA size exceeded"
 			if strings.Index(response, expected) != 0 {
@@ -1120,17 +1121,17 @@ func TestDataCommand(t *testing.T) {
 				t.Error("Hello command failed", err.Error())
 			}
 
-			response, err := Command(conn, bufin, "MAIL FROM:<test@grr.la>")
+			_, err = Command(conn, bufin, "MAIL FROM:<test@grr.la>")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
 			//fmt.Println(response)
-			response, err = Command(conn, bufin, "RCPT TO:<test@grr.la>")
+			_, err = Command(conn, bufin, "RCPT TO:<test@grr.la>")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
 			//fmt.Println(response)
-			response, err = Command(conn, bufin, "DATA")
+			_, err = Command(conn, bufin, "DATA")
 			if err != nil {
 				t.Error("command failed", err.Error())
 			}
@@ -1141,7 +1142,7 @@ func TestDataCommand(t *testing.T) {
 					testHeader+"\r\nHello World\r\n.\r\n")
 			*/
 			_ = testHeader
-			response, err = Command(
+			response, err := Command(
 				conn,
 				bufin,
 				email+"\r\n.\r\n")

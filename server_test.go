@@ -11,7 +11,7 @@ import (
 
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
+
 	"net"
 
 	"github.com/phires/go-guerrilla/backends"
@@ -196,15 +196,15 @@ func cleanTestArtifacts(t *testing.T) {
 func TestTLSConfig(t *testing.T) {
 
 	defer cleanTestArtifacts(t)
-	if err := ioutil.WriteFile("rootca.test.pem", []byte(rootCAPK), 0644); err != nil {
+	if err := os.WriteFile("rootca.test.pem", []byte(rootCAPK), 0644); err != nil {
 		t.Fatal("couldn't create rootca.test.pem file.", err)
 		return
 	}
-	if err := ioutil.WriteFile("client.test.key", []byte(clientPrvKey), 0644); err != nil {
+	if err := os.WriteFile("client.test.key", []byte(clientPrvKey), 0644); err != nil {
 		t.Fatal("couldn't create client.test.key file.", err)
 		return
 	}
-	if err := ioutil.WriteFile("client.test.pem", []byte(clientPubKey), 0644); err != nil {
+	if err := os.WriteFile("client.test.pem", []byte(clientPubKey), 0644); err != nil {
 		t.Fatal("couldn't create client.test.pem file.", err)
 		return
 	}

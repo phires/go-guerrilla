@@ -1,7 +1,6 @@
 package backends
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -47,7 +46,7 @@ func TestRedisGeneric(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	if b, err := ioutil.ReadFile("./test_redis.log"); err != nil {
+	if b, err := os.ReadFile("./test_redis.log"); err != nil {
 		t.Error(err)
 		return
 	} else {

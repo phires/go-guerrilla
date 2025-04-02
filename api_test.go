@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -180,7 +179,7 @@ func TestSMTPLoadFile(t *testing.T) {
 }
 
 	`
-	err := ioutil.WriteFile("goguerrilla.conf.api", []byte(json), 0644)
+	err := os.WriteFile("goguerrilla.conf.api", []byte(json), 0644)
 	if err != nil {
 		t.Error("could not write guerrilla.conf.api", err)
 		return
@@ -207,7 +206,7 @@ func TestSMTPLoadFile(t *testing.T) {
 			t.Error("d.Config.LogFile != tests/go-guerrilla.pid")
 		}
 
-		err := ioutil.WriteFile("goguerrilla.conf.api", []byte(json2), 0644)
+		err := os.WriteFile("goguerrilla.conf.api", []byte(json2), 0644)
 		if err != nil {
 			t.Error("could not write guerrilla.conf.api", err)
 			return
@@ -254,7 +253,7 @@ func TestReopenLog(t *testing.T) {
 		d.Shutdown()
 	}
 
-	b, err := ioutil.ReadFile("tests/testlog")
+	b, err := os.ReadFile("tests/testlog")
 	if err != nil {
 		t.Error("could not read logfile")
 		return
@@ -309,7 +308,7 @@ func TestReopenServerLog(t *testing.T) {
 		d.Shutdown()
 	}
 
-	b, err := ioutil.ReadFile("tests/testlog")
+	b, err := os.ReadFile("tests/testlog")
 	if err != nil {
 		t.Error("could not read logfile")
 		return
@@ -321,7 +320,7 @@ func TestReopenServerLog(t *testing.T) {
 		t.Error("Main log did not re-opened, expecting \"re-opened main log file\"")
 	}
 
-	b, err = ioutil.ReadFile(testServerLog)
+	b, err = os.ReadFile(testServerLog)
 	if err != nil {
 		t.Error("could not read logfile")
 		return
@@ -366,7 +365,7 @@ func TestSetConfig(t *testing.T) {
 		d.Shutdown()
 	}
 
-	b, err := ioutil.ReadFile("tests/testlog")
+	b, err := os.ReadFile("tests/testlog")
 	if err != nil {
 		t.Error("could not read logfile")
 		return
@@ -471,7 +470,7 @@ func TestSetAddProcessor(t *testing.T) {
 
 	d.Shutdown()
 
-	b, err := ioutil.ReadFile("tests/testlog")
+	b, err := os.ReadFile("tests/testlog")
 	if err != nil {
 		t.Error("could not read logfile")
 		return
@@ -636,7 +635,7 @@ func TestPubSubAPI(t *testing.T) {
 		t.Error(err)
 	}
 
-	b, err := ioutil.ReadFile("tests/testlog")
+	b, err := os.ReadFile("tests/testlog")
 	if err != nil {
 		t.Error("could not read logfile")
 		return
@@ -669,7 +668,7 @@ func TestAPILog(t *testing.T) {
 		t.Error("log dest is not tests/testlog, it was ", l.GetLogDest())
 	}
 
-	b, err := ioutil.ReadFile("tests/testlog")
+	b, err := os.ReadFile("tests/testlog")
 	if err != nil {
 		t.Error("could not read logfile")
 		return
@@ -760,7 +759,7 @@ func TestCustomBackendResult(t *testing.T) {
 
 	d.Shutdown()
 
-	b, err := ioutil.ReadFile("tests/testlog")
+	b, err := os.ReadFile("tests/testlog")
 	if err != nil {
 		t.Error("could not read logfile")
 		return
