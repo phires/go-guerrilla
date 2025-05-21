@@ -244,6 +244,8 @@ The following processors can be imported to your project, then use the
 |[MailDir](https://github.com/flashmob/maildir-processor)|Save emails to a maildir. [MailDiranasaurus](https://github.com/flashmob/maildiranasaurus) is an example project|
 |[FastCGI](https://github.com/flashmob/fastcgi-processor)|Deliver email directly to PHP-FPM or a similar FastCGI backend.|
 |[WildcardProcessor](https://github.com/DevelHell/wildcard-processor)|Use wildcards for recipients host validation.|
+|[GmailProcessor](https://github.com/greystonedevelopers/gmailprocessor)    | Bridge from SMTP to Google API|                                                                                   |
+
 
 Have a processor that you would like to share? Submit a PR to add it to the list!
 
