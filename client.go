@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/textproto"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/phires/go-guerrilla/log"
@@ -41,7 +42,21 @@ type client struct {
 	*mail.Envelope
 	ID          uint64
 	ConnectedAt time.Time
-	KilledAt    time.Time
+
+	// KilledAt mirrors the kill timestamp for callers that read it directly.
+	// It's only ever written while holding killedGuard.
+	//
+	// Deprecated: reading this field is not goroutine safe, a time.Time is three
+	// words wide and the pool's goroutine may be writing it. Use isAlive().
+	KilledAt time.Time
+	// killedGuard guards writes to the deprecated KilledAt field
+	killedGuard sync.Mutex
+	// killedAt is the authoritative kill flag: the unix nano timestamp of when
+	// the client was killed, or 0 while it's still alive. The pool's goroutine
+	// kills clients while the connection's own goroutine reads the flag on every
+	// turn, so it's accessed atomically.
+	killedAt atomic.Int64
+
 	// Number of errors encountered during session with this client
 	errors       int
 	state        ClientState
@@ -136,14 +151,18 @@ func (c *client) isInTransaction() bool {
 	return true
 }
 
-// kill flags the connection to close on the next turn
+// kill flags the connection to close on the next turn, goroutine safe
 func (c *client) kill() {
-	c.KilledAt = time.Now()
+	now := time.Now()
+	c.killedAt.Store(now.UnixNano())
+	c.killedGuard.Lock()
+	c.KilledAt = now // deprecated, kept in sync for API compatibility
+	c.killedGuard.Unlock()
 }
 
-// isAlive returns true if the client is to close on the next turn
+// isAlive returns true if the client is to close on the next turn, goroutine safe
 func (c *client) isAlive() bool {
-	return c.KilledAt.IsZero()
+	return c.killedAt.Load() == 0
 }
 
 // setTimeout adjust the timeout on the connection, goroutine safe
@@ -172,7 +191,10 @@ func (c *client) init(conn net.Conn, clientID uint64, ep *mail.Pool) {
 	c.bufin.Reset(conn)
 	// reset session data
 	c.state = 0
-	c.KilledAt = time.Time{}
+	c.killedAt.Store(0)
+	c.killedGuard.Lock()
+	c.KilledAt = time.Time{} // deprecated, kept in sync for API compatibility
+	c.killedGuard.Unlock()
 	c.ConnectedAt = time.Now()
 	c.ID = clientID
 	c.errors = 0

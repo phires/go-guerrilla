@@ -1267,3 +1267,122 @@ func TestAllowsHosts(t *testing.T) {
 	s.setAllowedHosts([]string{"grr.la", "example.com"})
 
 }
+
+// TestServerStateAndListenerRace covers H1: server.state and server.listener are
+// written by the server's own goroutine (Start and the accept loop) while the
+// daemon reads them from other goroutines (guerrilla.Start, guerrilla.Shutdown
+// and the config reload events). Only meaningful when run with -race.
+func TestServerStateAndListenerRace(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfig()
+	sc.ListenInterface = "127.0.0.1:2531"
+	// keep TLS out of the way, this test is only about the state fields
+	sc.TLS.StartTLSOn = false
+	sc.TLS.AlwaysOn = false
+	mainlog, _ := log.GetLogger(log.OutputOff.String(), log.InfoLevel.String())
+	backend, err := backends.New(
+		backends.BackendConfig{"log_received_mails": true, "save_workers_size": 1},
+		mainlog)
+	if err != nil {
+		t.Fatal("new backend failed because:", err)
+	}
+	s, err := newServer(sc, backend, mainlog)
+	if err != nil {
+		t.Fatal("new server failed because:", err)
+	}
+	if s.getState() != ServerStateNew {
+		t.Error("a new server should be in ServerStateNew, got", s.getState())
+	}
+
+	// readers keep hammering the fields for the duration of the test, the way
+	// the daemon does while a server starts up and shuts down
+	stop := make(chan struct{})
+	var readers sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_ = s.getState()
+					_ = s.getListener()
+				}
+			}
+		}()
+	}
+
+	var startWG sync.WaitGroup
+	startWG.Add(1)
+	go func() {
+		if err := s.Start(&startWG); err != nil {
+			t.Error("server did not start because:", err)
+		}
+	}()
+	startWG.Wait()
+	if s.getState() != ServerStateRunning {
+		t.Error("server should be in ServerStateRunning after Start, got", s.getState())
+	}
+
+	s.Shutdown()
+	if s.getState() != ServerStateStopped {
+		t.Error("server should be in ServerStateStopped after Shutdown, got", s.getState())
+	}
+
+	close(stop)
+	readers.Wait()
+	if err := backend.Shutdown(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestClientKillRace covers H1: the pool's goroutine kills clients (via
+// Pool.ShutdownState and Pool.SetTimeout) while the connection's own goroutine
+// reads the flag through isAlive(). Only meaningful when run with -race.
+func TestClientKillRace(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	conn := mocks.NewConn()
+	mainlog, _ := log.GetLogger(log.OutputOff.String(), log.InfoLevel.String())
+	c := NewClient(conn.Server, 1, mainlog, mail.NewPool(1))
+	if !c.isAlive() {
+		t.Error("a new client should be alive")
+	}
+
+	begin := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { // stands in for the pool's goroutine
+		defer wg.Done()
+		<-begin
+		for i := 0; i < 1000; i++ {
+			c.kill()
+		}
+	}()
+	go func() { // stands in for the connection's goroutine
+		defer wg.Done()
+		<-begin
+		for i := 0; i < 1000; i++ {
+			_ = c.isAlive()
+		}
+	}()
+	close(begin)
+	wg.Wait()
+
+	if c.isAlive() {
+		t.Error("client should not be alive after kill()")
+	}
+	// the deprecated KilledAt field has to stay in sync with the kill flag
+	if c.KilledAt.IsZero() {
+		t.Error("the deprecated KilledAt field should have been set by kill()")
+	}
+	// a client recycled through the pool has to come back alive
+	c.init(conn.Server, 2, mail.NewPool(1))
+	if !c.isAlive() {
+		t.Error("a client returned from the pool should be alive again")
+	}
+	if !c.KilledAt.IsZero() {
+		t.Error("the deprecated KilledAt field should have been reset by init()")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"runtime/debug"
@@ -31,11 +32,35 @@ type BackendGateway struct {
 	processors   []Processor
 	validators   []Processor
 
-	// controls access to state
+	// controls access to the gateway's configuration and worker set
 	sync.Mutex
-	State    backendState
+
+	// State mirrors the gateway's state for callers that read it directly.
+	// It's only ever written while holding the mutex.
+	//
+	// Deprecated: reading this field is not goroutine safe, it may be torn or
+	// stale when the gateway changes state concurrently. Use GetState() instead.
+	State backendState
+
+	// state is the authoritative copy of the gateway's state. Process and
+	// ValidateRcpt read it on the hot path without taking the mutex, so it's
+	// accessed atomically. Use GetState() / setState().
+	state    atomic.Int32
 	config   BackendConfig
 	gwConfig *GatewayConfig
+}
+
+// GetState returns the gateway's current state, goroutine safe
+func (gw *BackendGateway) GetState() backendState {
+	return backendState(gw.state.Load())
+}
+
+// setState stores the gateway's state, goroutine safe.
+// The caller is expected to hold gw.Mutex, so that the deprecated State field
+// keeps the same single-writer guarantee it always had.
+func (gw *BackendGateway) setState(state backendState) {
+	gw.state.Store(int32(state))
+	gw.State = state
 }
 
 type GatewayConfig struct {
@@ -128,8 +153,8 @@ func (w *workerMsg) reset(e *mail.Envelope, task SelectTask) {
 
 // Process distributes an envelope to one of the backend workers with a TaskSaveMail task
 func (gw *BackendGateway) Process(e *mail.Envelope, task SelectTask) Result {
-	if gw.State != BackendStateRunning {
-		return NewResult(response.Canned.FailBackendNotRunning, response.SP, gw.State)
+	if gw.GetState() != BackendStateRunning {
+		return NewResult(response.Canned.FailBackendNotRunning, response.SP, gw.GetState())
 	}
 	// borrow a workerMsg from the pool
 	workerMsg := workerMsgPool.Get().(*workerMsg)
@@ -182,7 +207,7 @@ func (gw *BackendGateway) Process(e *mail.Envelope, task SelectTask) Result {
 // ValidateRcpt asks one of the workers to validate the recipient
 // Only the last recipient appended to e.RcptTo will be validated.
 func (gw *BackendGateway) ValidateRcpt(e *mail.Envelope) RcptError {
-	if gw.State != BackendStateRunning {
+	if gw.GetState() != BackendStateRunning {
 		return StorageNotAvailable
 	}
 	if _, ok := gw.validators[0].(NoopProcessor); ok {
@@ -219,7 +244,7 @@ func (gw *BackendGateway) ValidateRcpt(e *mail.Envelope) RcptError {
 func (gw *BackendGateway) Shutdown() error {
 	gw.Lock()
 	defer gw.Unlock()
-	if gw.State != BackendStateShuttered {
+	if gw.GetState() != BackendStateShuttered {
 		// send a signal to all workers
 		gw.stopWorkers()
 		// wait for workers to stop
@@ -228,14 +253,14 @@ func (gw *BackendGateway) Shutdown() error {
 		if err := Svc.shutdown(); err != nil {
 			return err
 		}
-		gw.State = BackendStateShuttered
+		gw.setState(BackendStateShuttered)
 	}
 	return nil
 }
 
 // Reinitialize initializes the gateway with the existing config after it was shutdown
 func (gw *BackendGateway) Reinitialize() error {
-	if gw.State != BackendStateShuttered {
+	if gw.GetState() != BackendStateShuttered {
 		return errors.New("backend must be in BackendStateshuttered state to Reinitialize")
 	}
 	// clear the Initializers and Shutdowners
@@ -294,17 +319,17 @@ func (gw *BackendGateway) loadConfig(cfg BackendConfig) error {
 func (gw *BackendGateway) Initialize(cfg BackendConfig) error {
 	gw.Lock()
 	defer gw.Unlock()
-	if gw.State != BackendStateNew && gw.State != BackendStateShuttered {
+	if gw.GetState() != BackendStateNew && gw.GetState() != BackendStateShuttered {
 		return errors.New("can only Initialize in BackendStateNew or BackendStateShuttered state")
 	}
 	err := gw.loadConfig(cfg)
 	if err != nil {
-		gw.State = BackendStateError
+		gw.setState(BackendStateError)
 		return err
 	}
 	workersSize := gw.workersSize()
 	if workersSize < 1 {
-		gw.State = BackendStateError
+		gw.setState(BackendStateError)
 		return errors.New("must have at least 1 worker")
 	}
 	gw.processors = make([]Processor, 0)
@@ -312,28 +337,28 @@ func (gw *BackendGateway) Initialize(cfg BackendConfig) error {
 	for i := 0; i < workersSize; i++ {
 		p, err := gw.newStack(gw.gwConfig.SaveProcess)
 		if err != nil {
-			gw.State = BackendStateError
+			gw.setState(BackendStateError)
 			return err
 		}
 		gw.processors = append(gw.processors, p)
 
 		v, err := gw.newStack(gw.gwConfig.ValidateProcess)
 		if err != nil {
-			gw.State = BackendStateError
+			gw.setState(BackendStateError)
 			return err
 		}
 		gw.validators = append(gw.validators, v)
 	}
 	// initialize processors
 	if err := Svc.initialize(cfg); err != nil {
-		gw.State = BackendStateError
+		gw.setState(BackendStateError)
 		return err
 	}
 	if gw.conveyor == nil {
 		gw.conveyor = make(chan *workerMsg, workersSize)
 	}
 	// ready to start
-	gw.State = BackendStateInitialized
+	gw.setState(BackendStateInitialized)
 	return nil
 }
 
@@ -341,7 +366,7 @@ func (gw *BackendGateway) Initialize(cfg BackendConfig) error {
 func (gw *BackendGateway) Start() error {
 	gw.Lock()
 	defer gw.Unlock()
-	if gw.State == BackendStateInitialized || gw.State == BackendStateShuttered {
+	if state := gw.GetState(); state == BackendStateInitialized || state == BackendStateShuttered {
 		// we start our workers
 		workersSize := gw.workersSize()
 		// make our slice of channels for stopping
@@ -369,10 +394,10 @@ func (gw *BackendGateway) Start() error {
 			}(i, stop)
 			gw.workStoppers = append(gw.workStoppers, stop)
 		}
-		gw.State = BackendStateRunning
+		gw.setState(BackendStateRunning)
 		return nil
 	} else {
-		return fmt.Errorf("cannot start backend because it's in %s state", gw.State)
+		return fmt.Errorf("cannot start backend because it's in %s state", gw.GetState())
 	}
 }
 

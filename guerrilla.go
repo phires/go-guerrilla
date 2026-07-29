@@ -288,7 +288,7 @@ func (g *guerrilla) subscribeEvents() {
 	// start a server that already exists in the config and has been enabled
 	events[EventConfigServerStart] = serverEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
-			if server.state == ServerStateStopped || server.state == ServerStateNew {
+			if state := server.getState(); state == ServerStateStopped || state == ServerStateNew {
 				g.mainlog().Infof("Starting server [%s]", server.listenInterface)
 				err := g.Start()
 				if err != nil {
@@ -301,7 +301,7 @@ func (g *guerrilla) subscribeEvents() {
 	// stop running a server
 	events[EventConfigServerStop] = serverEvent(func(sc *ServerConfig) {
 		if server, err := g.findServer(sc.ListenInterface); err == nil {
-			if server.state == ServerStateRunning {
+			if server.getState() == ServerStateRunning {
 				server.Shutdown()
 				g.mainlog().Infof("Server [%s] stopped.", sc.ListenInterface)
 			}
@@ -465,8 +465,8 @@ func (g *guerrilla) Start() error {
 			// not enabled
 			continue
 		}
-		if g.servers[ListenInterface].state != ServerStateNew &&
-			g.servers[ListenInterface].state != ServerStateStopped {
+		if state := g.servers[ListenInterface].getState(); state != ServerStateNew &&
+			state != ServerStateStopped {
 			continue
 		}
 		startWG.Add(1)
@@ -497,7 +497,7 @@ func (g *guerrilla) Shutdown() {
 
 	// shut down the servers first
 	g.mapServers(func(s *server) {
-		if s.state == ServerStateRunning {
+		if s.getState() == ServerStateRunning {
 			s.Shutdown()
 			g.mainlog().Infof("shutdown completed for [%s]", s.listenInterface)
 		}

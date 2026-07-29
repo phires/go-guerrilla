@@ -2,6 +2,7 @@ package backends
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,8 +43,8 @@ func TestInitialize(t *testing.T) {
 		t.Error("gateway.conveyor channel buffer cap does not match worker size, cap was", cap(gateway.conveyor))
 	}
 
-	if gateway.State != BackendStateInitialized {
-		t.Error("gateway.State is not in initialized state, got ", gateway.State)
+	if gateway.GetState() != BackendStateInitialized {
+		t.Error("gateway state is not in initialized state, got ", gateway.GetState())
 	}
 
 }
@@ -70,8 +71,8 @@ func TestStartProcessStop(t *testing.T) {
 		t.Error("Gateway did not start because:", err)
 		t.Fail()
 	}
-	if gateway.State != BackendStateRunning {
-		t.Error("gateway.State is not in rinning state, got ", gateway.State)
+	if gateway.GetState() != BackendStateRunning {
+		t.Error("gateway state is not in running state, got ", gateway.GetState())
 	}
 	// can we place an envelope on the conveyor channel?
 
@@ -109,5 +110,57 @@ func TestStartProcessStop(t *testing.T) {
 	err = gateway.Shutdown()
 	if err != nil {
 		t.Error("Gateway did not shutdown")
+	}
+}
+
+// TestGatewayStateRace covers H1: the gateway's state is written under gw.Mutex
+// by Initialize/Start/Shutdown, but Process and ValidateRcpt used to read it
+// without holding the lock. Only meaningful when run with -race.
+func TestGatewayStateRace(t *testing.T) {
+	c := BackendConfig{
+		"save_process":       "HeadersParser|Debugger",
+		"log_received_mails": true,
+		"save_workers_size":  1,
+	}
+	mainlog, _ := log.GetLogger(log.OutputOff.String(), "info")
+	Svc.SetMainlog(mainlog)
+
+	gateway := &BackendGateway{}
+	if err := gateway.Initialize(c); err != nil {
+		t.Fatal("gateway did not init because:", err)
+	}
+	if err := gateway.Start(); err != nil {
+		t.Fatal("gateway did not start because:", err)
+	}
+
+	begin := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			e := &mail.Envelope{RemoteIP: "127.0.0.1", QueuedId: "abc12345"}
+			e.PushRcpt(mail.Address{User: "test", Host: "example.com"})
+			<-begin
+			for k := 0; k < 100; k++ {
+				// reads the state
+				_ = gateway.ValidateRcpt(e)
+			}
+		}()
+	}
+	close(begin)
+	// writes the state
+	if err := gateway.Shutdown(); err != nil {
+		t.Error("gateway did not shutdown because:", err)
+	}
+	wg.Wait()
+
+	if gateway.GetState() != BackendStateShuttered {
+		t.Error("gateway should be in shuttered state, got", gateway.GetState())
+	}
+	// the deprecated State field has to stay in sync with the atomic one
+	if gateway.State != gateway.GetState() {
+		t.Error("the deprecated State field should mirror GetState(), got",
+			gateway.State, "want", gateway.GetState())
 	}
 }

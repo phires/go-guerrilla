@@ -51,11 +51,16 @@ type server struct {
 	listenInterface string
 	clientPool      *Pool
 	//lint:ignore U1000 unused
-	wg             sync.WaitGroup // for waiting to shutdown
+	wg sync.WaitGroup // for waiting to shutdown
+	// listener is written by the server's own goroutine and read by the daemon,
+	// listenerGuard guards access to it
 	listener       net.Listener
+	listenerGuard  sync.Mutex
 	closedListener chan bool
 	hosts          allowedHosts // stores map[string]bool for faster lookup
-	state          int
+	// state stores one of the ServerState* constants. Read and written from
+	// multiple goroutines, so only touch it via setState / getState
+	state atomic.Int32
 	// If log changed after a config reload, newLogStore stores the value here until it's safe to change it
 	logStore     atomic.Value
 	mainlogStore atomic.Value
@@ -103,9 +108,9 @@ func newServer(sc *ServerConfig, b backends.Backend, mainlog log.Logger) (*serve
 		clientPool:      NewPool(sc.MaxClients),
 		closedListener:  make(chan bool, 1),
 		listenInterface: sc.ListenInterface,
-		state:           ServerStateNew,
 		envelopePool:    mail.NewPool(sc.MaxClients),
 	}
+	server.setState(ServerStateNew)
 	server.mainlogStore.Store(mainlog)
 	server.backendStore.Store(b)
 	if sc.LogFile == "" {
@@ -190,6 +195,33 @@ func (s *server) configureTLS() error {
 	return nil
 }
 
+// setState stores the server's state, goroutine safe.
+// Takes one of the ServerState* constants.
+func (s *server) setState(state int32) {
+	s.state.Store(state)
+}
+
+// getState loads the server's state, goroutine safe.
+// Returns one of the ServerState* constants.
+func (s *server) getState() int32 {
+	return s.state.Load()
+}
+
+// setListener stores the server's listener, goroutine safe
+func (s *server) setListener(l net.Listener) {
+	s.listenerGuard.Lock()
+	defer s.listenerGuard.Unlock()
+	s.listener = l
+}
+
+// getListener loads the server's listener, goroutine safe.
+// Returns nil if the server isn't listening.
+func (s *server) getListener() net.Listener {
+	s.listenerGuard.Lock()
+	defer s.listenerGuard.Unlock()
+	return s.listener
+}
+
 // setBackend sets the backend to use for processing email envelopes
 func (s *server) setBackend(b backends.Backend) {
 	s.backendStore.Store(b)
@@ -246,15 +278,15 @@ func (s *server) Start(startWG *sync.WaitGroup) error {
 	var clientID uint64 = 0
 
 	listener, err := net.Listen("tcp", s.listenInterface)
-	s.listener = listener
+	s.setListener(listener)
 	if err != nil {
+		s.setState(ServerStateStartError)
 		startWG.Done() // don't wait for me
-		s.state = ServerStateStartError
 		return fmt.Errorf("[%s] Cannot listen on port: %s ", s.listenInterface, err.Error())
 	}
 
 	s.log().Infof("Listening on TCP %s", s.listenInterface)
-	s.state = ServerStateRunning
+	s.setState(ServerStateRunning)
 	startWG.Done() // start successful, don't wait for me
 
 	for {
@@ -268,7 +300,7 @@ func (s *server) Start(startWG *sync.WaitGroup) error {
 				s.log().Infof("shutting down pool [%s]", s.listenInterface)
 				s.clientPool.ShutdownState()
 				s.clientPool.ShutdownWait()
-				s.state = ServerStateStopped
+				s.setState(ServerStateStopped)
 				s.closedListener <- true
 				return nil
 			}
@@ -295,9 +327,9 @@ func (s *server) Start(startWG *sync.WaitGroup) error {
 }
 
 func (s *server) Shutdown() {
-	if s.listener != nil {
+	if l := s.getListener(); l != nil {
 		// This will cause Start function to return, by causing an error on listener.Accept
-		_ = s.listener.Close()
+		_ = l.Close()
 		// wait for the listener to listener.Accept
 		<-s.closedListener
 		// At this point Start will exit and close down the pool
@@ -305,7 +337,7 @@ func (s *server) Shutdown() {
 		s.clientPool.ShutdownState()
 		// listener already closed, wait for clients to exit
 		s.clientPool.ShutdownWait()
-		s.state = ServerStateStopped
+		s.setState(ServerStateStopped)
 	}
 }
 
