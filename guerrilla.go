@@ -473,7 +473,12 @@ func (g *guerrilla) Start() error {
 		go func(s *server) {
 			g.mainlog().Infof("Starting: %s", s.listenInterface)
 			if err := s.Start(&startWG); err != nil {
+				// s.Start only returns an error when it could not listen, in which
+				// case it left startWG untouched on purpose. Hand the error over
+				// first, then release it: the other way around we'd be racing
+				// against close(errs) below and panic on a closed channel.
 				errs <- err
+				startWG.Done()
 			}
 		}(g.servers[ListenInterface])
 	}

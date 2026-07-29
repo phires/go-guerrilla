@@ -274,6 +274,14 @@ func (s *server) setAllowedHosts(allowedHosts []string) {
 }
 
 // Begin accepting SMTP clients. Will block unless there is an error or server.Shutdown() is called
+//
+// startWG is released as soon as the server is listening, so that the caller can
+// carry on while Start keeps blocking in the accept loop.
+//
+// If the server cannot listen at all, Start returns the error *without* releasing
+// startWG. The caller has to release it itself, after it has taken care of the
+// error: otherwise whoever waits on startWG races ahead and may stop collecting
+// startup errors before this one was even reported.
 func (s *server) Start(startWG *sync.WaitGroup) error {
 	var clientID uint64 = 0
 
@@ -281,7 +289,7 @@ func (s *server) Start(startWG *sync.WaitGroup) error {
 	s.setListener(listener)
 	if err != nil {
 		s.setState(ServerStateStartError)
-		startWG.Done() // don't wait for me
+		// deliberately not calling startWG.Done() here, see the doc comment
 		return fmt.Errorf("[%s] Cannot listen on port: %s ", s.listenInterface, err.Error())
 	}
 

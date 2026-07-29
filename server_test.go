@@ -1338,6 +1338,116 @@ func TestServerStateAndListenerRace(t *testing.T) {
 	}
 }
 
+// TestServerStartErrorHoldsStartWG covers the send-on-closed-channel race in
+// guerrilla.Start: a server that cannot listen must hand its error over before
+// releasing startWG. Otherwise guerrilla.Start returns from startWG.Wait() and
+// closes the error channel while the server's goroutine is still on its way to
+// send on it, which panics the whole daemon.
+func TestServerStartErrorHoldsStartWG(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	// occupy the port so that the server cannot listen on it
+	blocker, err := net.Listen("tcp", "127.0.0.1:2532")
+	if err != nil {
+		t.Fatal("could not occupy the test port:", err)
+	}
+	defer func() {
+		if err := blocker.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	sc := getMockServerConfig()
+	sc.ListenInterface = "127.0.0.1:2532"
+	sc.TLS.StartTLSOn = false
+	sc.TLS.AlwaysOn = false
+	mainlog, _ := log.GetLogger(log.OutputOff.String(), log.InfoLevel.String())
+	backend, err := backends.New(
+		backends.BackendConfig{"log_received_mails": true, "save_workers_size": 1},
+		mainlog)
+	if err != nil {
+		t.Fatal("new backend failed because:", err)
+	}
+	s, err := newServer(sc, backend, mainlog)
+	if err != nil {
+		t.Fatal("new server failed because:", err)
+	}
+
+	var startWG sync.WaitGroup
+	startWG.Add(1)
+	if err := s.Start(&startWG); err == nil {
+		t.Fatal("Start should have failed, the port is already in use")
+	}
+	if s.getState() != ServerStateStartError {
+		t.Error("server should be in ServerStateStartError, got", s.getState())
+	}
+
+	// startWG has to still be held, so that the caller can report the error
+	// before whoever waits on it carries on
+	waited := make(chan struct{})
+	go func() {
+		startWG.Wait()
+		close(waited)
+	}()
+	select {
+	case <-waited:
+		t.Error("Start released startWG before returning its error, guerrilla.Start " +
+			"can close the error channel before the error is sent")
+	case <-time.After(50 * time.Millisecond):
+		// still held, as required
+	}
+	// the caller releases it once the error is handed over
+	startWG.Done()
+	select {
+	case <-waited:
+	case <-time.After(time.Second):
+		t.Error("startWG was never released")
+	}
+
+	if err := backend.Shutdown(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestDaemonStartReportsListenError makes sure the daemon still collects the
+// startup error of a server that could not listen, and that starting it doesn't
+// panic on a double release of startWG.
+func TestDaemonStartReportsListenError(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	blocker, err := net.Listen("tcp", "127.0.0.1:2533")
+	if err != nil {
+		t.Fatal("could not occupy the test port:", err)
+	}
+	defer func() {
+		if err := blocker.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	cfg := &AppConfig{
+		LogFile:      log.OutputOff.String(),
+		AllowedHosts: []string{"grr.la"},
+		Servers: []ServerConfig{
+			{
+				IsEnabled:       true,
+				Hostname:        "mail.test.com",
+				ListenInterface: "127.0.0.1:2533",
+				MaxClients:      10,
+				MaxSize:         1024,
+				Timeout:         5,
+			},
+		},
+	}
+	d := Daemon{Config: cfg}
+	err = d.Start()
+	if err == nil {
+		t.Fatal("Start should have reported that the server cannot listen")
+	}
+	if !strings.Contains(err.Error(), "Cannot listen on port") {
+		t.Error("expected a listen error, got:", err)
+	}
+	d.Shutdown()
+}
+
 // TestClientKillRace covers H1: the pool's goroutine kills clients (via
 // Pool.ShutdownState and Pool.SetTimeout) while the connection's own goroutine
 // reads the flag through isAlive(). Only meaningful when run with -race.
