@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	"net"
+	"time"
 
 	"github.com/phires/go-guerrilla/backends"
 	"github.com/phires/go-guerrilla/log"
@@ -963,6 +964,54 @@ func TestProxy(t *testing.T) {
 	}
 	_, _ = r.ReadLine()
 	wg.Wait() // wait for handleClient to exit
+}
+
+// A PROXY header that announces TCP4/TCP6 but omits the source address must not
+// take the process down. Before the fix, params[1] was indexed after the
+// "PROXY" prefix had been stripped, so a header carrying only the protocol
+// token panicked the connection goroutine and, with no recover() in the
+// connection path, the whole daemon.
+func TestProxyMissingAddress(t *testing.T) {
+	for _, header := range []string{"PROXY TCP4", "PROXY TCP6"} {
+		t.Run(header, func(t *testing.T) {
+			defer cleanTestArtifacts(t)
+			sc := getMockServerConfig()
+			sc.ProxyOn = true
+			mainlog, logOpenError := log.GetLogger(sc.LogFile, "debug")
+			if logOpenError != nil {
+				mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
+			}
+			conn, server := getMockServerConn(sc, t)
+			client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				server.handleClient(client)
+				wg.Done()
+			}()
+
+			w := textproto.NewWriter(bufio.NewWriter(conn.Client))
+			if err := w.PrintfLine("%s", header); err != nil {
+				t.Error(err)
+			}
+
+			// The server must reject the header and hang up rather than panic.
+			done := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("handleClient did not return after a malformed PROXY header")
+			}
+
+			if client.isAlive() {
+				t.Error("client should have been killed after a malformed PROXY header")
+			}
+		})
+	}
 }
 
 // The backend gateway should time out after 1 second because it sleeps for 2 sec.
