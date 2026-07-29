@@ -492,7 +492,7 @@ func TestGithubIssue198(t *testing.T) {
 }
 
 func sendMessage(greet string, TLS bool, w *textproto.Writer, t *testing.T, line string, r *textproto.Reader, err error, client *client) string {
-	if err := w.PrintfLine(greet + " test.test.com"); err != nil {
+	if err := w.PrintfLine("%s test.test.com", greet); err != nil {
 		t.Error(err)
 	}
 	for {
