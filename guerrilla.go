@@ -119,7 +119,15 @@ func New(ac *AppConfig, b backends.Backend, l log.Logger) (Guerrilla, error) {
 }
 
 // Instantiate servers
+//
+// Holds g.guard for the whole body. g.servers is shared with the config reload
+// events (EventConfigServerNew calls this at runtime) and with Shutdown, and
+// every other accessor of the map takes the same lock. Keeping the lookup and
+// the insert in one critical section also stops two concurrent reloads from both
+// instantiating the same server. Callers must not hold g.guard.
 func (g *guerrilla) makeServers() error {
+	g.guard.Lock()
+	defer g.guard.Unlock()
 	g.mainlog().Debug("making servers")
 	var errs Errors
 	for _, sc := range g.Config.Servers {

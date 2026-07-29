@@ -1338,6 +1338,109 @@ func TestServerStateAndListenerRace(t *testing.T) {
 	}
 }
 
+// TestMakeServersMapRace covers H2: every other accessor of g.servers takes
+// g.guard, but makeServers read and wrote the map lock-free. It runs at runtime
+// through the EventConfigServerNew event, so a config reload that adds a server
+// concurrently with Shutdown or mapServers hits a concurrent map write, which is
+// a fatal runtime error and takes the daemon down.
+func TestMakeServersMapRace(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	mainlog, _ := log.GetLogger(log.OutputOff.String(), log.InfoLevel.String())
+	backend, err := backends.New(
+		backends.BackendConfig{"log_received_mails": true, "save_workers_size": 1},
+		mainlog)
+	if err != nil {
+		t.Fatal("new backend failed because:", err)
+	}
+	// a handful of servers so that makeServers has several map writes to do.
+	// TLS off and no LogFile, so that newServer needs neither certs nor files.
+	ifaces := []string{
+		"127.0.0.1:2534", "127.0.0.1:2535", "127.0.0.1:2536", "127.0.0.1:2537",
+	}
+	ac := &AppConfig{LogFile: log.OutputOff.String(), AllowedHosts: []string{"grr.la"}}
+	for _, iface := range ifaces {
+		ac.Servers = append(ac.Servers, ServerConfig{
+			IsEnabled:       true,
+			Hostname:        "mail.test.com",
+			ListenInterface: iface,
+			MaxClients:      2,
+			MaxSize:         1024,
+			Timeout:         5,
+		})
+	}
+	gg, err := New(ac, backend, mainlog)
+	if err != nil {
+		t.Fatal("could not create the daemon:", err)
+	}
+	g := gg.(*guerrilla)
+
+	begin := make(chan struct{})
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// re-creates whatever the remover took out, this is the lock-free writer
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-begin
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = g.makeServers()
+			}
+		}
+	}()
+	// deletes from the map under g.guard, so that the writer above keeps having
+	// work to do
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-begin
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+				g.removeServer(ifaces[i%len(ifaces)])
+			}
+		}
+	}()
+	// iterates the map under g.guard, the way Shutdown does
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-begin
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				g.mapServers(func(s *server) {
+					_ = s.getState()
+				})
+			}
+		}
+	}()
+
+	close(begin)
+	time.Sleep(200 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// makeServers has to have restored the full set
+	if err := g.makeServers(); err != nil {
+		t.Error("makeServers failed:", err)
+	}
+	if got := len(g.mapServers(func(s *server) {})); got != len(ifaces) {
+		t.Error("expected", len(ifaces), "servers, got", got)
+	}
+	if err := backend.Shutdown(); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestServerStartErrorHoldsStartWG covers the send-on-closed-channel race in
 // guerrilla.Start: a server that cannot listen must hand its error over before
 // releasing startWG. Otherwise guerrilla.Start returns from startWG.Wait() and
