@@ -209,19 +209,30 @@ func (c *client) getID() uint64 {
 
 // UpgradeToTLS upgrades a client connection to TLS
 func (c *client) upgradeToTLS(tlsConfig *tls.Config) error {
-	// wrap c.conn in a new TLS server side connection
-	tlsConn := tls.Server(c.conn, tlsConfig)
+	// The pool's goroutine reads c.conn under connGuard (setTimeout, closeConn),
+	// so both the read and the swap below have to hold it. The handshake itself
+	// must not: it's a blocking network operation, and holding the lock across it
+	// would stop the pool from lowering our timeout during a shutdown.
+	c.connGuard.Lock()
+	conn := c.conn
+	c.connGuard.Unlock()
+	if conn == nil {
+		return errors.New("cannot upgrade a closed connection to TLS")
+	}
+	// wrap the connection in a new TLS server side connection
+	tlsConn := tls.Server(conn, tlsConfig)
 	// Call handshake here to get any handshake error before reading starts
-	err := tlsConn.Handshake()
-	if err != nil {
+	if err := tlsConn.Handshake(); err != nil {
 		return err
 	}
 	// convert tlsConn to net.Conn
+	c.connGuard.Lock()
 	c.conn = net.Conn(tlsConn)
-	c.bufout.Reset(c.conn)
-	c.bufin.Reset(c.conn)
+	c.connGuard.Unlock()
+	c.bufout.Reset(tlsConn)
+	c.bufin.Reset(tlsConn)
 	c.TLS = true
-	return err
+	return nil
 }
 
 func getRemoteAddr(conn net.Conn) string {

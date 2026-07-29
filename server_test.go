@@ -1338,6 +1338,177 @@ func TestServerStateAndListenerRace(t *testing.T) {
 	}
 }
 
+// newTestServer builds a server on iface with TLS switched off and no separate
+// log file, so that it needs neither certificates nor files on disk.
+// timeout is the server's client timeout in seconds.
+func newTestServer(t *testing.T, iface string, maxClients, timeout int) (*server, backends.Backend) {
+	t.Helper()
+	mainlog, _ := log.GetLogger(log.OutputOff.String(), log.InfoLevel.String())
+	backend, err := backends.New(
+		backends.BackendConfig{"log_received_mails": true, "save_workers_size": 1},
+		mainlog)
+	if err != nil {
+		t.Fatal("new backend failed because:", err)
+	}
+	sc := &ServerConfig{
+		IsEnabled:       true,
+		Hostname:        "mail.test.com",
+		ListenInterface: iface,
+		MaxClients:      maxClients,
+		MaxSize:         1024,
+		Timeout:         timeout,
+	}
+	s, err := newServer(sc, backend, mainlog)
+	if err != nil {
+		t.Fatal("new server failed because:", err)
+	}
+	s.setAllowedHosts([]string{"test.com"})
+	return s, backend
+}
+
+// TestServerShutdownIsIdempotent covers H3: Shutdown never cleared s.listener, so
+// a second call closed the already closed listener and then waited forever on
+// s.closedListener, which only ever carries a single value. Reached in practice
+// through EventConfigServerRemove, which calls Shutdown without checking the
+// state - and when that runs under g.guard the whole daemon is wedged.
+func TestServerShutdownIsIdempotent(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	s, backend := newTestServer(t, "127.0.0.1:2538", 10, 5)
+
+	var startWG sync.WaitGroup
+	startWG.Add(1)
+	go func() {
+		if err := s.Start(&startWG); err != nil {
+			t.Error("server did not start because:", err)
+		}
+	}()
+	startWG.Wait()
+
+	s.Shutdown()
+	if s.getState() != ServerStateStopped {
+		t.Error("server should be in ServerStateStopped after Shutdown, got", s.getState())
+	}
+
+	// the second call must return instead of blocking on s.closedListener
+	done := make(chan struct{})
+	go func() {
+		s.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the second Shutdown deadlocked, it is waiting for a closedListener " +
+			"signal that is never sent again")
+	}
+	if s.getState() != ServerStateStopped {
+		t.Error("server should still be in ServerStateStopped, got", s.getState())
+	}
+
+	if err := backend.Shutdown(); err != nil {
+		t.Error(err)
+	}
+}
+
+// TestRemoveServerAfterShutdown covers H3 end to end: the daemon shuts its
+// servers down, then a config reload removes one of them. The remove event calls
+// server.Shutdown() a second time, which used to block forever.
+func TestRemoveServerAfterShutdown(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	cfg := &AppConfig{
+		LogFile:      log.OutputOff.String(),
+		AllowedHosts: []string{"grr.la"},
+		Servers: []ServerConfig{
+			{
+				IsEnabled:       true,
+				Hostname:        "mail.test.com",
+				ListenInterface: "127.0.0.1:2539",
+				MaxClients:      10,
+				MaxSize:         1024,
+				Timeout:         5,
+			},
+		},
+	}
+	d := Daemon{Config: cfg}
+	if err := d.Start(); err != nil {
+		t.Fatal("daemon did not start:", err)
+	}
+	d.Shutdown()
+
+	// EventConfigServerRemove shuts the server down again. Publish is synchronous,
+	// so a deadlocked handler blocks this goroutine.
+	done := make(chan struct{})
+	go func() {
+		d.Publish(EventConfigServerRemove, &cfg.Servers[0])
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("EventConfigServerRemove deadlocked on an already shut down server")
+	}
+}
+
+// TestShutdownWithSaturatedPool covers H3: Borrow held poolGuard across the
+// blocking wait for a free slot. With the pool full the accept loop is stuck in
+// Borrow and never gets back to Accept, so it never notices that Shutdown closed
+// the listener - and the only thing that would release Borrow, ShutdownState,
+// needs the very lock Borrow is holding.
+func TestShutdownWithSaturatedPool(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	// A single client slot, so that the second connection saturates the pool.
+	// The client timeout is deliberately long: a client that keeps its connection
+	// open is what makes the deadlock permanent instead of merely stalling until
+	// the read deadline expires.
+	s, backend := newTestServer(t, "127.0.0.1:2540", 1, 600)
+
+	var startWG sync.WaitGroup
+	startWG.Add(1)
+	go func() {
+		if err := s.Start(&startWG); err != nil {
+			t.Error("server did not start because:", err)
+		}
+	}()
+	startWG.Wait()
+
+	// first client takes the only slot and keeps it, it never sends QUIT
+	first, err := net.Dial("tcp", "127.0.0.1:2540")
+	if err != nil {
+		t.Fatal("could not connect the first client:", err)
+	}
+	defer func() { _ = first.Close() }()
+	if _, err := bufio.NewReader(first).ReadString('\n'); err != nil {
+		t.Fatal("no greeting for the first client:", err)
+	}
+
+	// second client gets accepted, then the accept loop blocks in Borrow
+	second, err := net.Dial("tcp", "127.0.0.1:2540")
+	if err != nil {
+		t.Fatal("could not connect the second client:", err)
+	}
+	defer func() { _ = second.Close() }()
+	// give the accept loop the time to get into Borrow
+	time.Sleep(200 * time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		s.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown deadlocked while the client pool was saturated")
+	}
+	if s.getState() != ServerStateStopped {
+		t.Error("server should be in ServerStateStopped after Shutdown, got", s.getState())
+	}
+
+	if err := backend.Shutdown(); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestMakeServersMapRace covers H2: every other accessor of g.servers takes
 // g.guard, but makeServers read and wrote the map lock-free. It runs at runtime
 // through the EventConfigServerNew event, so a config reload that adds a server

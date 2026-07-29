@@ -54,8 +54,11 @@ type server struct {
 	wg sync.WaitGroup // for waiting to shutdown
 	// listener is written by the server's own goroutine and read by the daemon,
 	// listenerGuard guards access to it
-	listener       net.Listener
-	listenerGuard  sync.Mutex
+	listener      net.Listener
+	listenerGuard sync.Mutex
+	// shutdownGuard serializes Shutdown calls, so that a second one can't wait for
+	// a closedListener signal that the first one already consumed
+	shutdownGuard  sync.Mutex
 	closedListener chan bool
 	hosts          allowedHosts // stores map[string]bool for faster lookup
 	// state stores one of the ServerState* constants. Read and written from
@@ -222,6 +225,18 @@ func (s *server) getListener() net.Listener {
 	return s.listener
 }
 
+// takeListener returns the server's listener and clears the field, goroutine
+// safe. Returns nil if the listener was already taken, which is what makes
+// Shutdown idempotent: only the caller that got the listener waits for the
+// accept loop to report back.
+func (s *server) takeListener() net.Listener {
+	s.listenerGuard.Lock()
+	defer s.listenerGuard.Unlock()
+	l := s.listener
+	s.listener = nil
+	return l
+}
+
 // setBackend sets the backend to use for processing email envelopes
 func (s *server) setBackend(b backends.Backend) {
 	s.backendStore.Store(b)
@@ -316,12 +331,17 @@ func (s *server) Start(startWG *sync.WaitGroup) error {
 			continue
 		}
 		go func(p Poolable, borrowErr error) {
-			c := p.(*client)
-			if borrowErr == nil {
+			// the type assertion has to stay behind the error check: Borrow returns
+			// a nil Poolable when it gives up, and asserting on that panics
+			c, ok := p.(*client)
+			if borrowErr == nil && ok {
 				s.handleClient(c)
 				s.envelopePool.Return(c.Envelope)
 				s.clientPool.Return(c)
 			} else {
+				if borrowErr == nil {
+					borrowErr = fmt.Errorf("pool returned a %T, not a *client", p)
+				}
 				s.log().WithError(borrowErr).Info("couldn't borrow a new client")
 				// we could not get a client, so close the connection.
 				_ = conn.Close()
@@ -334,19 +354,33 @@ func (s *server) Start(startWG *sync.WaitGroup) error {
 	}
 }
 
+// Shutdown stops the server from accepting new clients and waits for the active
+// ones to finish. Safe to call more than once, and safe to call on a server that
+// was never started - EventConfigServerRemove does exactly that.
 func (s *server) Shutdown() {
-	if l := s.getListener(); l != nil {
+	s.shutdownGuard.Lock()
+	defer s.shutdownGuard.Unlock()
+	if l := s.takeListener(); l != nil {
+		// Signal the pool before closing the listener: the accept loop may be
+		// waiting in Borrow for a free client slot, and it would never get back to
+		// Accept to notice that the listener is gone. ShutdownState releases it.
+		s.clientPool.ShutdownState()
 		// This will cause Start function to return, by causing an error on listener.Accept
 		_ = l.Close()
 		// wait for the listener to listener.Accept
 		<-s.closedListener
 		// At this point Start will exit and close down the pool
-	} else {
-		s.clientPool.ShutdownState()
-		// listener already closed, wait for clients to exit
-		s.clientPool.ShutdownWait()
-		s.setState(ServerStateStopped)
+		return
 	}
+	// No listener: the server either never started, or it has already been shut
+	// down and the accept loop has run the pool down for us.
+	if s.getState() == ServerStateStopped {
+		return
+	}
+	s.clientPool.ShutdownState()
+	// listener already closed, wait for clients to exit
+	s.clientPool.ShutdownWait()
+	s.setState(ServerStateStopped)
 }
 
 func (s *server) GetActiveClientsCount() int {
