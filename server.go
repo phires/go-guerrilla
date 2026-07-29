@@ -465,6 +465,14 @@ func (s *server) isShuttingDown() bool {
 func (s *server) handleClient(client *client) {
 	defer client.closeConn()
 	sc := s.configStore.Load().(ServerConfig)
+	// Nothing below here may touch the network without a deadline. With
+	// tls.always_on the handshake is the very first operation, with proxyon it's
+	// the PROXY header read, and both used to run before the first flushResponse
+	// ever set one - a silent client parked a goroutine and a pool slot for good.
+	if err := client.setTimeout(s.timeout.Load().(time.Duration)); err != nil {
+		s.log().WithError(err).Warnf("[%s] could not set a deadline on the connection", client.RemoteIP)
+		return
+	}
 	s.log().Infof("Handle client [%s], id: %d", client.RemoteIP, client.ID)
 
 	// Initial greeting

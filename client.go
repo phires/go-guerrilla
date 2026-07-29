@@ -18,6 +18,12 @@ import (
 	"github.com/phires/go-guerrilla/response"
 )
 
+// initialConnDeadline is the deadline a connection starts out with, so that no
+// read and no TLS handshake can ever run without one. handleClient replaces it
+// with the server's configured timeout as soon as it takes the client over, this
+// is only the safety net for the window in between.
+const initialConnDeadline = 30 * time.Second
+
 // ClientState indicates which part of the SMTP transaction a given client is in.
 type ClientState int
 
@@ -92,6 +98,9 @@ func NewClient(conn net.Conn, clientID uint64, logger log.Logger, envelope *mail
 
 	// used for reading the DATA state
 	c.smtpReader = textproto.NewReader(c.bufin.Reader)
+	if err := conn.SetDeadline(time.Now().Add(initialConnDeadline)); err != nil {
+		c.log.WithError(err).Warn("could not set the initial deadline on the connection")
+	}
 	return c
 }
 
@@ -186,6 +195,9 @@ func (c *client) closeConn() {
 // init is called after the client is borrowed from the pool, to get it ready for the connection
 func (c *client) init(conn net.Conn, clientID uint64, ep *mail.Pool) {
 	c.conn = conn
+	if err := conn.SetDeadline(time.Now().Add(initialConnDeadline)); err != nil {
+		c.log.WithError(err).Warn("could not set the initial deadline on the connection")
+	}
 	// reset our reader & writer
 	c.bufout.Reset(conn)
 	c.bufin.Reset(conn)

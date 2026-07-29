@@ -19,6 +19,7 @@ import (
 	"github.com/phires/go-guerrilla/log"
 	"github.com/phires/go-guerrilla/mail"
 	"github.com/phires/go-guerrilla/mocks"
+	"github.com/phires/go-guerrilla/tests/testcert"
 )
 
 // getMockServerConfig gets a mock ServerConfig struct used for creating a new server
@@ -1364,6 +1365,179 @@ func newTestServer(t *testing.T, iface string, maxClients, timeout int) (*server
 	}
 	s.setAllowedHosts([]string{"test.com"})
 	return s, backend
+}
+
+// waitForActiveClients waits until the server reports want active clients.
+// Returns the last count it saw.
+func waitForActiveClients(s *server, want int, within time.Duration) int {
+	deadline := time.Now().Add(within)
+	got := s.GetActiveClientsCount()
+	for time.Now().Before(deadline) {
+		if got == want {
+			return got
+		}
+		time.Sleep(20 * time.Millisecond)
+		got = s.GetActiveClientsCount()
+	}
+	return got
+}
+
+// TestProxyReadHasDeadline covers H4: with proxyon the first thing the server
+// does is read the PROXY header, and no deadline had been set on the connection
+// at that point - the first setTimeout only happened in flushResponse. A client
+// that connects and stays silent parks the connection goroutine and one of the
+// MaxClients pool slots forever, which is H11's capacity effect.
+func TestProxyReadHasDeadline(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	// 1 second timeout, so that a working deadline shows up quickly
+	s, backend := newTestServer(t, "127.0.0.1:2541", 10, 1)
+	sc := s.configStore.Load().(ServerConfig)
+	sc.ProxyOn = true
+	s.setConfig(&sc)
+
+	var startWG sync.WaitGroup
+	startWG.Add(1)
+	go func() {
+		if err := s.Start(&startWG); err != nil {
+			t.Error("server did not start because:", err)
+		}
+	}()
+	startWG.Wait()
+	defer func() {
+		s.Shutdown()
+		if err := backend.Shutdown(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// connect and say nothing at all, the way a slowloris client does
+	conn, err := net.Dial("tcp", "127.0.0.1:2541")
+	if err != nil {
+		t.Fatal("could not connect:", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if got := waitForActiveClients(s, 1, 2*time.Second); got != 1 {
+		t.Fatal("expected the silent client to be active, got", got)
+	}
+	// the read deadline has to drop the client and free its pool slot
+	if got := waitForActiveClients(s, 0, 5*time.Second); got != 0 {
+		t.Error("the silent client still holds a pool slot after the timeout " +
+			"should have expired, no deadline was set before the PROXY read")
+	}
+}
+
+// TestAlwaysOnTLSHandshakeHasDeadline covers H4: with tls.always_on the very
+// first operation is the TLS handshake, which ran before any deadline was set.
+// A client that opens the connection and never sends a ClientHello holds the
+// goroutine and a pool slot forever.
+func TestAlwaysOnTLSHandshakeHasDeadline(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	if err := testcert.GenerateCert("mail.guerrillamail.com", "", 365*24*time.Hour, false, 2048, "P256", "./tests/"); err != nil {
+		t.Fatal("could not generate a test certificate:", err)
+	}
+	s, backend := newTestServer(t, "127.0.0.1:2542", 10, 1)
+	sc := s.configStore.Load().(ServerConfig)
+	sc.TLS.AlwaysOn = true
+	sc.TLS.PrivateKeyFile = "./tests/mail.guerrillamail.com.key.pem"
+	sc.TLS.PublicKeyFile = "./tests/mail.guerrillamail.com.cert.pem"
+	s.setConfig(&sc)
+	if err := s.configureTLS(); err != nil {
+		t.Fatal("could not configure TLS:", err)
+	}
+
+	var startWG sync.WaitGroup
+	startWG.Add(1)
+	go func() {
+		if err := s.Start(&startWG); err != nil {
+			t.Error("server did not start because:", err)
+		}
+	}()
+	startWG.Wait()
+	defer func() {
+		s.Shutdown()
+		if err := backend.Shutdown(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// plain TCP, never send a ClientHello
+	conn, err := net.Dial("tcp", "127.0.0.1:2542")
+	if err != nil {
+		t.Fatal("could not connect:", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if got := waitForActiveClients(s, 1, 2*time.Second); got != 1 {
+		t.Fatal("expected the silent client to be active, got", got)
+	}
+	if got := waitForActiveClients(s, 0, 5*time.Second); got != 0 {
+		t.Error("the silent client still holds a pool slot after the timeout " +
+			"should have expired, the TLS handshake ran without a deadline")
+	}
+}
+
+// TestSilentClientsDoNotExhaustThePool covers H11: Borrow takes the sem slot
+// before handleClient runs, so every connection that hangs without a deadline
+// holds one of the MaxClients slots for good. MaxClients silent connections used
+// to lock legitimate clients out of the server entirely, at no cost to the
+// attacker. Uses proxyon, because the PROXY header read is one of the operations
+// that had no deadline.
+func TestSilentClientsDoNotExhaustThePool(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	const maxClients = 3
+	s, backend := newTestServer(t, "127.0.0.1:2543", maxClients, 1)
+	sc := s.configStore.Load().(ServerConfig)
+	sc.ProxyOn = true
+	s.setConfig(&sc)
+
+	var startWG sync.WaitGroup
+	startWG.Add(1)
+	go func() {
+		if err := s.Start(&startWG); err != nil {
+			t.Error("server did not start because:", err)
+		}
+	}()
+	startWG.Wait()
+	defer func() {
+		s.Shutdown()
+		if err := backend.Shutdown(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// occupy every slot with a client that never says anything
+	for i := 0; i < maxClients; i++ {
+		silent, err := net.Dial("tcp", "127.0.0.1:2543")
+		if err != nil {
+			t.Fatal("could not connect the silent client:", err)
+		}
+		defer func() { _ = silent.Close() }()
+	}
+	if got := waitForActiveClients(s, maxClients, 3*time.Second); got != maxClients {
+		t.Fatal("expected", maxClients, "active clients, got", got)
+	}
+
+	// a legitimate client has to get served once the deadlines free the slots
+	conn, err := net.Dial("tcp", "127.0.0.1:2543")
+	if err != nil {
+		t.Fatal("could not connect:", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprint(conn, "PROXY TCP4 127.0.0.1 127.0.0.1 12345 2543\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	line, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		t.Fatal("the legitimate client never got served, the silent ones are still "+
+			"holding every pool slot:", err)
+	}
+	if !strings.HasPrefix(line, "220 ") {
+		t.Error("expected a 220 greeting, got:", line)
+	}
 }
 
 // TestServerShutdownIsIdempotent covers H3: Shutdown never cleared s.listener, so
