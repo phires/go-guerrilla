@@ -45,9 +45,72 @@ type BackendGateway struct {
 	// state is the authoritative copy of the gateway's state. Process and
 	// ValidateRcpt read it on the hot path without taking the mutex, so it's
 	// accessed atomically. Use GetState() / setState().
-	state    atomic.Int32
+	state atomic.Int32
+
+	// shutdownSignal stores a chan struct{} that gets closed when the gateway
+	// shuts down, and is replaced by a fresh one on Initialize so that the gateway
+	// can be reused. Closing it releases everything that waits to put a message on
+	// the conveyor. Stored atomically because Process must not take the mutex:
+	// Shutdown holds it across wg.Wait().
+	shutdownSignal atomic.Value
+
 	config   BackendConfig
 	gwConfig *GatewayConfig
+}
+
+// shutdownChan returns the channel that is closed when the gateway shuts down.
+// Returns nil for a gateway that was never initialized - receiving from a nil
+// channel blocks forever, which is the safe default for a select case.
+func (gw *BackendGateway) shutdownChan() <-chan struct{} {
+	if sig, ok := gw.shutdownSignal.Load().(chan struct{}); ok {
+		return sig
+	}
+	return nil
+}
+
+// signalShutdown releases everything that waits on the conveyor. The caller must
+// hold the mutex, and must not call it twice for the same shutdown - the
+// BackendStateShuttered check in Shutdown takes care of that.
+func (gw *BackendGateway) signalShutdown() {
+	if sig, ok := gw.shutdownSignal.Load().(chan struct{}); ok && sig != nil {
+		close(sig)
+	}
+}
+
+// isShuttingDown reports whether the shutdown signal has already been given.
+// Used to give the shutdown priority over an otherwise ready conveyor: a select
+// picks a random ready case, and a buffered conveyor stays writable even when
+// there is no worker left to read from it.
+func (gw *BackendGateway) isShuttingDown() bool {
+	select {
+	case <-gw.shutdownChan():
+		return true
+	default:
+		return false
+	}
+}
+
+// drainConveyor answers every message that is still queued. Called once the
+// workers are gone, so that a caller whose message made it into the buffer just
+// before the shutdown gets a result instead of waiting out its whole timeout and
+// leaking a drain goroutine plus a locked envelope.
+//
+// Every queued message has exactly one waiter - either the caller itself or its
+// drain goroutine - but the send is guarded by a short timeout anyway, so that a
+// broken invariant cannot wedge Shutdown while it holds the mutex.
+func (gw *BackendGateway) drainConveyor() {
+	for {
+		select {
+		case msg := <-gw.conveyor:
+			select {
+			case msg.notifyMe <- &notifyMsg{err: StorageNotAvailable}:
+			case <-time.After(time.Second):
+				Log().Error("could not notify a queued message during shutdown")
+			}
+		default:
+			return
+		}
+	}
 }
 
 // GetState returns the gateway's current state, goroutine safe
@@ -153,14 +216,32 @@ func (w *workerMsg) reset(e *mail.Envelope, task SelectTask) {
 
 // Process distributes an envelope to one of the backend workers with a TaskSaveMail task
 func (gw *BackendGateway) Process(e *mail.Envelope, task SelectTask) Result {
-	if gw.GetState() != BackendStateRunning {
+	if gw.GetState() != BackendStateRunning || gw.isShuttingDown() {
 		return NewResult(response.Canned.FailBackendNotRunning, response.SP, gw.GetState())
 	}
 	// borrow a workerMsg from the pool
 	workerMsg := workerMsgPool.Get().(*workerMsg)
 	workerMsg.reset(e, task)
-	// place on the channel so that one of the save mail workers can pick it up
-	gw.conveyor <- workerMsg
+	// One timer for the whole operation, so that a slow enqueue plus a slow save
+	// cannot add up to twice the configured timeout.
+	timer := time.NewTimer(gw.saveTimeout())
+	defer timer.Stop()
+	// place on the channel so that one of the save mail workers can pick it up.
+	// The conveyor only buffers workersSize messages, so this send blocks as soon
+	// as the workers fall behind - it needs the same timeout as the answer below.
+	select {
+	case gw.conveyor <- workerMsg:
+	case <-timer.C:
+		Log().Error("Backend has timed out while queueing email")
+		// nobody took the message, so it's safe to recycle right away
+		workerMsgPool.Put(workerMsg)
+		return NewResult(response.Canned.FailBackendTimeout)
+	case <-gw.shutdownChan():
+		// the gateway shut down after we read the state above, don't park on a
+		// conveyor that no worker reads any more
+		workerMsgPool.Put(workerMsg)
+		return NewResult(response.Canned.FailBackendNotRunning, response.SP, gw.GetState())
+	}
 	// wait for the save to complete
 	// or timeout
 	select {
@@ -191,7 +272,7 @@ func (gw *BackendGateway) Process(e *mail.Envelope, task SelectTask) Result {
 		Log().Error(err)
 		return NewResult(response.Canned.FailBackendTransaction, response.SP, err)
 
-	case <-time.After(gw.saveTimeout()):
+	case <-timer.C:
 		Log().Error("Backend has timed out while saving email")
 		e.Lock() // lock the envelope - it's still processing here, we don't want the server to recycle it
 		go func() {
@@ -207,7 +288,7 @@ func (gw *BackendGateway) Process(e *mail.Envelope, task SelectTask) Result {
 // ValidateRcpt asks one of the workers to validate the recipient
 // Only the last recipient appended to e.RcptTo will be validated.
 func (gw *BackendGateway) ValidateRcpt(e *mail.Envelope) RcptError {
-	if gw.GetState() != BackendStateRunning {
+	if gw.GetState() != BackendStateRunning || gw.isShuttingDown() {
 		return StorageNotAvailable
 	}
 	if _, ok := gw.validators[0].(NoopProcessor); ok {
@@ -217,7 +298,20 @@ func (gw *BackendGateway) ValidateRcpt(e *mail.Envelope) RcptError {
 	// place on the channel so that one of the save mail workers can pick it up
 	workerMsg := workerMsgPool.Get().(*workerMsg)
 	workerMsg.reset(e, TaskValidateRcpt)
-	gw.conveyor <- workerMsg
+	// one timer for the whole operation, see Process
+	timer := time.NewTimer(gw.validateRcptTimeout())
+	defer timer.Stop()
+	select {
+	case gw.conveyor <- workerMsg:
+	case <-timer.C:
+		Log().Error("Backend has timed out while queueing rcpt validation")
+		// nobody took the message, so it's safe to recycle right away
+		workerMsgPool.Put(workerMsg)
+		return StorageTimeout
+	case <-gw.shutdownChan():
+		workerMsgPool.Put(workerMsg)
+		return StorageNotAvailable
+	}
 	// wait for the validation to complete
 	// or timeout
 	select {
@@ -228,7 +322,7 @@ func (gw *BackendGateway) ValidateRcpt(e *mail.Envelope) RcptError {
 		}
 		return nil
 
-	case <-time.After(gw.validateRcptTimeout()):
+	case <-timer.C:
 		e.Lock()
 		go func() {
 			<-workerMsg.notifyMe
@@ -245,10 +339,16 @@ func (gw *BackendGateway) Shutdown() error {
 	gw.Lock()
 	defer gw.Unlock()
 	if gw.GetState() != BackendStateShuttered {
+		// release anything that is waiting to put a message on the conveyor before
+		// the workers go away, otherwise it would wait for a reader that never comes
+		gw.signalShutdown()
 		// send a signal to all workers
 		gw.stopWorkers()
 		// wait for workers to stop
 		gw.wg.Wait()
+		// nothing reads the conveyor from here on, so answer whatever is still
+		// queued rather than leaving those callers to wait out their timeout
+		gw.drainConveyor()
 		// call shutdown on all processor shutdowners
 		if err := Svc.shutdown(); err != nil {
 			return err
@@ -357,6 +457,8 @@ func (gw *BackendGateway) Initialize(cfg BackendConfig) error {
 	if gw.conveyor == nil {
 		gw.conveyor = make(chan *workerMsg, workersSize)
 	}
+	// a fresh shutdown signal, the old one may have been closed by Shutdown
+	gw.shutdownSignal.Store(make(chan struct{}))
 	// ready to start
 	gw.setState(BackendStateInitialized)
 	return nil
