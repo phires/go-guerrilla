@@ -1,9 +1,15 @@
 .idea
+.DS_Store
+.claude
+
 guerrillad
 goguerrilla.conf
 goguerrilla.conf.json
-dist
-vendor
+
+docs/
+dist/
+vendor/
+
 go-guerrilla.wiki
 goguerrilla.conf.api
 tests/pidfilex.pid
