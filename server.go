@@ -476,6 +476,14 @@ func (s *server) handleClient(client *client) {
 					client.RemoteIP = ""
 					s.log().Infof("Proxying from %s", proto)
 				case "TCP4", "TCP6":
+					// A well-formed v1 header carries 5 params after the protocol
+					// token; we only read the source address, so require at least
+					// that one rather than trusting the peer to send them all.
+					if len(params) < 2 {
+						s.log().Errorf("PROXY header specified protocol %s but omitted the source address", proto)
+						client.kill()
+						return
+					}
 					ipStr := string(params[1])
 					if ip, err := netip.ParseAddr(ipStr); err != nil {
 						s.log().WithError(err).Errorf("Invalid IP address in PROXY header from %s: %s", client.RemoteIP, string(params[1]))
