@@ -899,6 +899,17 @@ func TestXClient(t *testing.T) {
 		t.Error("expected", expected, "but got:", line)
 	}
 
+	// the bare verb, with no trailing space and no attributes, must not panic
+	if err := w.PrintfLine("XCLIENT"); err != nil {
+		t.Error(err)
+	}
+	line, _ = r.ReadLine()
+
+	expected = "250 2.1.0 OK"
+	if strings.Index(line, expected) != 0 {
+		t.Error("expected", expected, "but got:", line)
+	}
+
 	if err := w.PrintfLine("QUIT"); err != nil {
 		t.Error(err)
 	}

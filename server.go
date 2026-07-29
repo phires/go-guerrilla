@@ -583,18 +583,22 @@ func (s *server) handleClient(client *client) {
 				client.sendResponse("214-OK\r\n", quote)
 
 			case sc.XClientOn && cmdXCLIENT.match(cmd):
-				if toks := bytes.Split(input[8:], []byte{' '}); len(toks) > 0 {
-					for i := range toks {
-						if vals := bytes.Split(toks[i], []byte{'='}); len(vals) == 2 {
-							if bytes.Equal(vals[1], []byte("[UNAVAILABLE]")) {
-								// skip
-								continue
-							}
-							if bytes.Equal(vals[0], []byte("ADDR")) {
-								client.RemoteIP = string(vals[1])
-							}
-							if bytes.Equal(vals[0], []byte("HELO")) {
-								client.Helo = string(vals[1])
+				// the client may send the bare verb, without the separator that
+				// precedes the attribute list, leaving nothing to parse
+				if len(input) > len(cmdXCLIENT) {
+					if toks := bytes.Split(input[len(cmdXCLIENT)+1:], []byte{' '}); len(toks) > 0 {
+						for i := range toks {
+							if vals := bytes.Split(toks[i], []byte{'='}); len(vals) == 2 {
+								if bytes.Equal(vals[1], []byte("[UNAVAILABLE]")) {
+									// skip
+									continue
+								}
+								if bytes.Equal(vals[0], []byte("ADDR")) {
+									client.RemoteIP = string(vals[1])
+								}
+								if bytes.Equal(vals[0], []byte("HELO")) {
+									client.Helo = string(vals[1])
+								}
 							}
 						}
 					}
