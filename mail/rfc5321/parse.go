@@ -20,6 +20,11 @@ const (
 	LimitDomain = 255
 	// The minimum total number of recipients that must be buffered is 100
 	LimitRecipients = 100
+	// LimitAddressList is the maximum length of input accepted by RFC5322.Address.
+	// Address is called on header values, which may fold over several lines, so
+	// this is well above the 998 octet per-line limit of RFC5322. It is here to
+	// bound the work that a single header value can ask for.
+	LimitAddressList = 64 * 1024
 )
 
 var atExpected = errors.New("@ expected as part of mailbox")
@@ -58,6 +63,7 @@ func (s *Parser) Reset() {
 		s.accept.Reset()
 		s.LocalPartQuotes = false
 		s.IP = nil
+		s.ch = 0
 	}
 }
 
@@ -72,6 +78,9 @@ func (s *Parser) next() byte {
 		s.ch = s.buf[s.pos]
 		return s.ch
 	}
+	// clear s.ch, the input is exhausted. Loops that advance with next() but
+	// test s.ch would otherwise never see the end of the input
+	s.ch = 0
 	return 0
 }
 

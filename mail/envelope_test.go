@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Test MimeHeader decoding, not using iconv
@@ -64,6 +65,33 @@ func TestNewAddress(t *testing.T) {
 	addr, err = NewAddress(`Gogh Fir <tesst@test.com>`)
 	if err != nil {
 		t.Error("there should be no error:", addr.Host, err)
+	}
+}
+
+// A header value that is not an address must be rejected instead of hanging the
+// address parser. These values reach NewAddress through the sql processor, which
+// parses the attacker controlled From/To/Cc/Sender headers.
+func TestNewAddressTerminates(t *testing.T) {
+	inputs := []string{
+		"hello",
+		"hello world",
+		"a ",
+		strings.Repeat("a", 1<<20),
+	}
+	for _, input := range inputs {
+		done := make(chan error, 1)
+		go func() {
+			_, err := NewAddress(input)
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Errorf("NewAddress(%.20q): expecting an error, got none", input)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("NewAddress(%.20q) did not terminate within 2s", input)
+		}
 	}
 }
 

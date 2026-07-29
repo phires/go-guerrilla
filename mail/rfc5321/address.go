@@ -36,11 +36,15 @@ var (
 	errExpectingAngleClose   = errors.New("expecting >")
 	errExpectingAngleOpen    = errors.New("< expected")
 	errQuotedUnclosed        = errors.New("quoted string not closed")
+	errAddressTooLong        = errors.New("address too long")
 )
 
 // Address parses the "address" production specified in RFC5322
 // address         =   mailbox / group
 func (s *RFC5322) Address(input []byte) (AddressList, error) {
+	if len(input) > LimitAddressList {
+		return AddressList{}, errAddressTooLong
+	}
 	s.set(input)
 	s.next()
 	s.List = nil
@@ -207,7 +211,9 @@ func (s *RFC5322) atom() error {
 	for {
 		if s.isAtext(s.ch) {
 			s.accept.WriteByte(s.ch)
-			s.next()
+			if s.next() == 0 {
+				return nil // end of input
+			}
 		} else {
 			skipped := s.skipSpace()
 			if !s.isAtext(s.ch) {
@@ -217,7 +223,9 @@ func (s *RFC5322) atom() error {
 				s.accept.WriteByte(' ')
 			}
 			s.accept.WriteByte(s.ch)
-			s.next()
+			if s.next() == 0 {
+				return nil // end of input
+			}
 		}
 	}
 }
@@ -251,7 +259,10 @@ func (s *RFC5322) skipSpace() int {
 		if s.ch != ' ' && s.ch != 9 {
 			return skipped
 		}
-		s.next()
+		c := s.next()
 		skipped++
+		if c == 0 {
+			return skipped // end of input
+		}
 	}
 }
