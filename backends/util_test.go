@@ -1,7 +1,9 @@
 package backends
 
 import (
-	"encoding/base64"
+	"compress/zlib"
+	"io"
+	"strings"
 	"testing"
 )
 
@@ -107,53 +109,56 @@ func TestMD5Hex(t *testing.T) {
 	}
 }
 
-// TestCompress tests the compress function
-// It converts the compressed string to base64 to make it comparable
+// TestCompress checks the contract of Compress: the result is a zlib stream that
+// inflates back to the concatenated input. The exact bytes are not compared because
+// they depend on the compress/flate implementation of the Go version in use.
 func TestCompress(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     []string
-		want      string
-		expectErr bool
+		name  string
+		input []string
+		want  string
 	}{
 		{
-			name:      "single string",
-			input:     []string{"example"},
-			want:      "eAEABwD4/2V4YW1wbGUBAAD//wvAAu0=",
-			expectErr: false,
+			name:  "single string",
+			input: []string{"example"},
+			want:  "example",
 		},
 		{
-			name:      "multiple strings",
-			input:     []string{"example", "string", "arguments"},
-			want:      "eAEAFgDp/2V4YW1wbGVzdHJpbmdhcmd1bWVudHMBAAD//2sQCVo=",
-			expectErr: false,
+			name:  "multiple strings",
+			input: []string{"example", "string", "arguments"},
+			want:  "examplestringarguments",
 		},
 		{
-			name:      "empty input",
-			input:     []string{""},
-			want:      "eAEBAAD//wAAAAE=",
-			expectErr: false,
+			name:  "empty input",
+			input: []string{""},
+			want:  "",
 		},
 		{
-			name:      "no input",
-			input:     []string{},
-			want:      "eAEBAAD//wAAAAE=",
-			expectErr: false,
+			name:  "no input",
+			input: []string{},
+			want:  "",
 		},
 		{
-			name:      "♥️ unicode input",
-			input:     []string{"♥️ unicode input"},
-			want:      "eAEAFADr/+KZpe+4jyB1bmljb2RlIGlucHV0AQAA//9yqAmu",
-			expectErr: false,
+			name:  "♥️ unicode input",
+			input: []string{"♥️ unicode input"},
+			want:  "♥️ unicode input",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Compress(tt.input...)
-			base64 := base64.StdEncoding.EncodeToString([]byte(got))
-			if base64 != tt.want {
-				t.Errorf("Compress() = %v, want %v", base64, tt.want)
+			zr, err := zlib.NewReader(strings.NewReader(got))
+			if err != nil {
+				t.Fatalf("Compress() did not return a zlib stream: %v", err)
+			}
+			defer zr.Close()
+			inflated, err := io.ReadAll(zr)
+			if err != nil {
+				t.Fatalf("Compress() returned a stream that does not inflate: %v", err)
+			}
+			if string(inflated) != tt.want {
+				t.Errorf("Compress() inflates to %q, want %q", inflated, tt.want)
 			}
 		})
 	}
