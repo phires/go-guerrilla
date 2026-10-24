@@ -139,6 +139,9 @@ type Responses struct {
 	FailBackendTransaction       *Response
 	FailBackendTimeout           *Response
 	FailRcptCmd                  *Response
+	FailXClientNotAuthorized     *Response
+	FailXClientAlreadyReceived   *Response
+	FailXClientInTransaction     *Response
 
 	// The 400's
 	ErrorTooManyRecipients *Response
@@ -174,6 +177,27 @@ func init() {
 		BasicCode:    503,
 		Class:        ClassPermanentFailure,
 		Comment:      "Error: nested MAIL command",
+	}
+
+	Canned.FailXClientNotAuthorized = &Response{
+		EnhancedCode: OtherOrUndefinedSecurityStatus,
+		BasicCode:    550,
+		Class:        ClassPermanentFailure,
+		Comment:      "Error: insufficient authorization",
+	}
+
+	Canned.FailXClientAlreadyReceived = &Response{
+		EnhancedCode: InvalidCommand,
+		BasicCode:    503,
+		Class:        ClassPermanentFailure,
+		Comment:      "Error: XCLIENT already received",
+	}
+
+	Canned.FailXClientInTransaction = &Response{
+		EnhancedCode: InvalidCommand,
+		BasicCode:    503,
+		Class:        ClassPermanentFailure,
+		Comment:      "Error: MAIL transaction in progress",
 	}
 
 	Canned.SuccessMailCmd = &Response{
@@ -403,6 +427,7 @@ const (
 	ConversionRequiredButNotSupported       = ".6.3"
 	ConversionWithLossPerformed             = ".6.4"
 	ConversionFailed                        = ".6.5"
+	OtherOrUndefinedSecurityStatus          = ".7.0"
 )
 
 var defaultTexts = struct {

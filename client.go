@@ -46,6 +46,8 @@ type client struct {
 	errors       int
 	state        ClientState
 	messagesSent int
+	// xclientReceived is set once the session has seen an XCLIENT command; only one is honoured
+	xclientReceived bool
 	// Response to be written to the client (for debugging)
 	response   bytes.Buffer
 	bufErr     error
@@ -176,6 +178,7 @@ func (c *client) init(conn net.Conn, clientID uint64, ep *mail.Pool) {
 	c.ConnectedAt = time.Now()
 	c.ID = clientID
 	c.errors = 0
+	c.xclientReceived = false
 	// borrow an envelope from the envelope pool
 	c.Envelope = ep.Borrow(getRemoteAddr(conn), clientID)
 }

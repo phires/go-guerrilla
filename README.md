@@ -267,6 +267,17 @@ For such purposes as load balancing, terminating TLS early,
  want to use older TLS/SSL versions), 
  it is possible to [use NGINX as a proxy](https://github.com/phires/go-guerrilla/wiki/Using-Nginx-as-a-proxy).
 
+When go-guerrilla sits behind nginx, or any other proxy that speaks the
+[XCLIENT](https://www.postfix.org/XCLIENT_README.html) extension, set `"xclient_on": true`
+on that server so the proxy can pass on the real client's IP address and HELO name.
+Whatever a peer sends in XCLIENT ends up in the `Received` header, the logs and any SPF
+check, so the command is only honoured once per connection, outside a mail transaction,
+and only with a syntactically valid address. Restrict the peers that may use it with
+`"xclient_authorized_hosts": ["10.0.0.5", "192.0.2.0/24"]` (IP addresses or CIDR networks,
+the equivalent of Postfix's `smtpd_authorized_xclient_hosts`). With that list empty, every
+peer that can reach the server may use XCLIENT, so make sure such a server is only
+reachable through the proxy.
+
 
 
 Credits

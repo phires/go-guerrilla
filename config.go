@@ -58,8 +58,16 @@ type ServerConfig struct {
 	// IsEnabled set to true to start the server, false will ignore it
 	IsEnabled bool `json:"is_enabled"`
 	// XClientOn when using a proxy such as Nginx, XCLIENT command is used to pass the
-	// original client's IP address & client's HELO
+	// original client's IP address & client's HELO.
+	// Whatever a peer passes via XCLIENT ends up in the Received header, the logs and
+	// any SPF check, so only enable this on a server that is reached exclusively through
+	// a trusted proxy, or restrict the peers that may use it with XClientAuthorizedHosts.
 	XClientOn bool `json:"xclient_on,omitempty"`
+	// XClientAuthorizedHosts lists the peers that may use the XCLIENT command, as IP
+	// addresses or CIDR networks, e.g. "10.0.0.5", "192.0.2.0/24", "2001:db8::/32".
+	// Only used when XClientOn is set. When empty, every peer may use XCLIENT.
+	// This is the equivalent of Postfix's smtpd_authorized_xclient_hosts.
+	XClientAuthorizedHosts []string `json:"xclient_authorized_hosts,omitempty"`
 	// Proxied when using a loadbalancer such as HAProxy, set to true to enable
 	ProxyOn bool `json:"proxyon,omitempty"`
 }
@@ -473,6 +481,11 @@ func (sc *ServerConfig) Validate() error {
 		}
 		if _, err := tls.LoadX509KeyPair(sc.TLS.PublicKeyFile, sc.TLS.PrivateKeyFile); err != nil {
 			errs = append(errs, fmt.Errorf("cannot use TLS config for [%s], %v", sc.ListenInterface, err))
+		}
+	}
+	for _, h := range sc.XClientAuthorizedHosts {
+		if _, err := parseIPOrPrefix(h); err != nil {
+			errs = append(errs, fmt.Errorf("xclient_authorized_hosts for [%s] must contain IP addresses or CIDR networks: %v", sc.ListenInterface, err))
 		}
 	}
 	if len(errs) > 0 {

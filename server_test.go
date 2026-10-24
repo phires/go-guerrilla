@@ -847,75 +847,296 @@ func TestGithubIssue201(t *testing.T) {
 	wg.Wait() // wait for handleClient to exit
 }
 
-func TestXClient(t *testing.T) {
-	var mainlog log.Logger
-	var logOpenError error
-	defer cleanTestArtifacts(t)
-	sc := getMockServerConfig()
-	sc.XClientOn = true
-	mainlog, logOpenError = log.GetLogger(sc.LogFile, "debug")
+// xclientSession starts handleClient on a mock connection, consumes the greeting
+// and returns the client side of the conversation. remoteIP, when set, overrides
+// the peer address the server believes it is talking to (the mock connection has
+// no real TCP address).
+func xclientSession(t *testing.T, sc *ServerConfig, remoteIP string) (*textproto.Writer, *textproto.Reader, *client, *sync.WaitGroup) {
+	t.Helper()
+	mainlog, logOpenError := log.GetLogger(sc.LogFile, "debug")
 	if logOpenError != nil {
 		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
 	}
 	conn, server := getMockServerConn(sc, t)
-	// call the serve.handleClient() func in a goroutine.
 	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
+	if remoteIP != "" {
+		client.RemoteIP = remoteIP
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		server.handleClient(client)
 		wg.Done()
 	}()
-	// Wait for the greeting from the server
 	r := textproto.NewReader(bufio.NewReader(conn.Client))
-	line, _ := r.ReadLine()
-	//	fmt.Println(line)
 	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
-	if err := w.PrintfLine("HELO test.test.com"); err != nil {
-		t.Error(err)
+	if _, err := r.ReadLine(); err != nil {
+		t.Fatal("no greeting from server:", err)
 	}
-	line, _ = r.ReadLine()
-	//fmt.Println(line)
-	if err := w.PrintfLine("XCLIENT ADDR=212.96.64.216 NAME=[UNAVAILABLE]"); err != nil {
-		t.Error(err)
-	}
-	line, _ = r.ReadLine()
+	return w, r, client, &wg
+}
 
+// smtpCmd sends one command line and returns the server's single-line reply.
+func smtpCmd(t *testing.T, w *textproto.Writer, r *textproto.Reader, cmd string) string {
+	t.Helper()
+	if err := w.PrintfLine("%s", cmd); err != nil {
+		t.Fatal(err)
+	}
+	line, err := r.ReadLine()
+	if err != nil {
+		t.Fatalf("no reply to %q: %v", cmd, err)
+	}
+	return line
+}
+
+func xclientQuit(t *testing.T, w *textproto.Writer, r *textproto.Reader, wg *sync.WaitGroup) {
+	t.Helper()
+	smtpCmd(t, w, r, "QUIT")
+	wg.Wait()
+}
+
+// A well-formed XCLIENT from the proxy replaces the peer address and HELO once;
+// a second XCLIENT in the same session is refused and changes nothing.
+// https://github.com/phires/go-guerrilla/security/advisories/GHSA-3rjp-h4r9-4r6p
+func TestXClient(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfig()
+	sc.XClientOn = true
+	w, r, client, wg := xclientSession(t, sc, "")
+
+	if line := smtpCmd(t, w, r, "HELO proxy.test.com"); !strings.HasPrefix(line, "250") {
+		t.Fatal("expected 250 to HELO, got:", line)
+	}
+	line := smtpCmd(t, w, r, "XCLIENT ADDR=212.96.64.216 NAME=[UNAVAILABLE] HELO=client.example.net PROTO=ESMTP")
+	if !strings.HasPrefix(line, "250 2.1.0 OK") {
+		t.Error("expected 250 2.1.0 OK, got:", line)
+	}
 	if client.RemoteIP != "212.96.64.216" {
 		t.Error("client.RemoteIP should be 212.96.64.216, but got:", client.RemoteIP)
 	}
-	expected := "250 2.1.0 OK"
-	if strings.Index(line, expected) != 0 {
-		t.Error("expected", expected, "but got:", line)
+	if client.Helo != "client.example.net" {
+		t.Error("client.Helo should be client.example.net, but got:", client.Helo)
 	}
 
-	// try malformed input
-	if err := w.PrintfLine("XCLIENT c"); err != nil {
-		t.Error(err)
+	line = smtpCmd(t, w, r, "XCLIENT ADDR=1.2.3.5 HELO=other.example.net")
+	if !strings.HasPrefix(line, "503 5.5.1 ") {
+		t.Error("expected 503 5.5.1 for a second XCLIENT, got:", line)
 	}
-	line, _ = r.ReadLine()
+	if client.RemoteIP != "212.96.64.216" {
+		t.Error("second XCLIENT must not change RemoteIP, but got:", client.RemoteIP)
+	}
+	if client.Helo != "client.example.net" {
+		t.Error("second XCLIENT must not change Helo, but got:", client.Helo)
+	}
+	xclientQuit(t, w, r, wg)
+}
 
-	expected = "250 2.1.0 OK"
-	if strings.Index(line, expected) != 0 {
-		t.Error("expected", expected, "but got:", line)
-	}
+// Attributes we do not use, malformed tokens and the bare verb (GHSA-hghq-53p7-c582)
+// are accepted and leave the session untouched.
+func TestXClientIgnoredAttributes(t *testing.T) {
+	for _, cmd := range []string{
+		"XCLIENT",
+		"XCLIENT c",
+		"XCLIENT NAME=proxy.example.net PORT=4711 PROTO=ESMTP LOGIN=bob",
+		"XCLIENT ADDR=[UNAVAILABLE] HELO=[TEMPUNAVAIL]",
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			defer cleanTestArtifacts(t)
+			sc := getMockServerConfig()
+			sc.XClientOn = true
+			w, r, client, wg := xclientSession(t, sc, "192.0.2.10")
 
-	// the bare verb, with no trailing space and no attributes, must not panic
-	if err := w.PrintfLine("XCLIENT"); err != nil {
-		t.Error(err)
+			if line := smtpCmd(t, w, r, cmd); !strings.HasPrefix(line, "250 2.1.0 OK") {
+				t.Error("expected 250 2.1.0 OK, got:", line)
+			}
+			if client.RemoteIP != "192.0.2.10" {
+				t.Error("RemoteIP must be unchanged, but got:", client.RemoteIP)
+			}
+			if client.Helo != "" {
+				t.Error("Helo must be unchanged, but got:", client.Helo)
+			}
+			xclientQuit(t, w, r, wg)
+		})
 	}
-	line, _ = r.ReadLine()
+}
 
-	expected = "250 2.1.0 OK"
-	if strings.Index(line, expected) != 0 {
-		t.Error("expected", expected, "but got:", line)
-	}
+// ADDR must be an IP address. Nothing from a rejected command is applied, not
+// even attributes that were valid on their own.
+func TestXClientInvalidAddr(t *testing.T) {
+	for _, addr := range []string{
+		"not-an-ip-at-all",
+		"",
+		"1.2.3.4.5",
+		"999.1.1.1",
+		"[1.2.3.4]",
+		"1.2.3.4;x",
+		"IPV6:1.2.3.4",
+		"IPV6:",
+	} {
+		t.Run(addr, func(t *testing.T) {
+			defer cleanTestArtifacts(t)
+			sc := getMockServerConfig()
+			sc.XClientOn = true
+			w, r, client, wg := xclientSession(t, sc, "192.0.2.10")
 
-	if err := w.PrintfLine("QUIT"); err != nil {
-		t.Error(err)
+			line := smtpCmd(t, w, r, "XCLIENT HELO=client.example.net ADDR="+addr)
+			if !strings.HasPrefix(line, "550 5.5.2 ") {
+				t.Error("expected 550 5.5.2, got:", line)
+			}
+			if client.RemoteIP != "192.0.2.10" {
+				t.Error("RemoteIP must be unchanged, but got:", client.RemoteIP)
+			}
+			if client.Helo != "" {
+				t.Error("Helo must be unchanged after a rejected XCLIENT, but got:", client.Helo)
+			}
+			xclientQuit(t, w, r, wg)
+		})
 	}
-	line, _ = r.ReadLine()
-	wg.Wait() // wait for handleClient to exit
+}
+
+// HELO goes through the same rfc5321 parser as the HELO/EHLO commands.
+func TestXClientInvalidHelo(t *testing.T) {
+	for _, helo := range []string{
+		"-bad.example.net",
+		"a..b",
+		"client.example.net.",
+		"[not-an-ip]",
+		"",
+	} {
+		t.Run(helo, func(t *testing.T) {
+			defer cleanTestArtifacts(t)
+			sc := getMockServerConfig()
+			sc.XClientOn = true
+			w, r, client, wg := xclientSession(t, sc, "192.0.2.10")
+
+			line := smtpCmd(t, w, r, "XCLIENT ADDR=203.0.113.9 HELO="+helo)
+			if !strings.HasPrefix(line, "550 5.5.2 ") {
+				t.Error("expected 550 5.5.2, got:", line)
+			}
+			if client.RemoteIP != "192.0.2.10" {
+				t.Error("RemoteIP must be unchanged after a rejected XCLIENT, but got:", client.RemoteIP)
+			}
+			if client.Helo != "" {
+				t.Error("Helo must be unchanged, but got:", client.Helo)
+			}
+			xclientQuit(t, w, r, wg)
+		})
+	}
+}
+
+// ADDR is stored in canonical form; the IPV6: prefix from the XCLIENT spec, as
+// sent by nginx, is accepted, as are address literals in HELO.
+func TestXClientAddrForms(t *testing.T) {
+	cases := []struct {
+		attrs    string
+		remoteIP string
+		helo     string
+	}{
+		{"ADDR=IPV6:2001:db8::1", "2001:db8::1", ""},
+		{"ADDR=ipv6:2001:DB8:0:0:0:0:0:1", "2001:db8::1", ""},
+		{"ADDR=2001:db8::1", "2001:db8::1", ""},
+		{"ADDR=::ffff:198.51.100.7", "198.51.100.7", ""},
+		{"ADDR=fe80::1%eth0", "fe80::1", ""},
+		{"ADDR=203.0.113.9 HELO=[203.0.113.9]", "203.0.113.9", "203.0.113.9"},
+		{"ADDR=203.0.113.9 HELO=[IPv6:2001:db8::1]", "203.0.113.9", "2001:db8::1"},
+		{"addr=203.0.113.9 helo=Client.Example.NET", "203.0.113.9", "Client.Example.NET"},
+	}
+	for _, c := range cases {
+		t.Run(c.attrs, func(t *testing.T) {
+			defer cleanTestArtifacts(t)
+			sc := getMockServerConfig()
+			sc.XClientOn = true
+			w, r, client, wg := xclientSession(t, sc, "192.0.2.10")
+
+			if line := smtpCmd(t, w, r, "XCLIENT "+c.attrs); !strings.HasPrefix(line, "250 2.1.0 OK") {
+				t.Error("expected 250 2.1.0 OK, got:", line)
+			}
+			if client.RemoteIP != c.remoteIP {
+				t.Errorf("RemoteIP: want %q, got %q", c.remoteIP, client.RemoteIP)
+			}
+			if client.Helo != c.helo {
+				t.Errorf("Helo: want %q, got %q", c.helo, client.Helo)
+			}
+			xclientQuit(t, w, r, wg)
+		})
+	}
+}
+
+// XCLIENT is refused once a mail transaction has started, and the refusal uses
+// up the session's single XCLIENT, so RSET does not reopen the window.
+func TestXClientInTransaction(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfig()
+	sc.XClientOn = true
+	w, r, client, wg := xclientSession(t, sc, "192.0.2.10")
+
+	if line := smtpCmd(t, w, r, "HELO proxy.test.com"); !strings.HasPrefix(line, "250") {
+		t.Fatal("expected 250 to HELO, got:", line)
+	}
+	// a transaction starts with MAIL FROM; no backend is running in this test, so stop there
+	if line := smtpCmd(t, w, r, "MAIL FROM:<sender@test.com>"); !strings.HasPrefix(line, "250") {
+		t.Fatal("expected 250 to MAIL FROM, got:", line)
+	}
+	if line := smtpCmd(t, w, r, "XCLIENT ADDR=203.0.113.9 HELO=evil.example.net"); !strings.HasPrefix(line, "503 5.5.1 ") {
+		t.Error("expected 503 5.5.1 for XCLIENT inside a transaction, got:", line)
+	}
+	if client.RemoteIP != "192.0.2.10" {
+		t.Error("RemoteIP must be unchanged, but got:", client.RemoteIP)
+	}
+	if client.Helo != "proxy.test.com" {
+		t.Error("Helo must be unchanged, but got:", client.Helo)
+	}
+	if line := smtpCmd(t, w, r, "RSET"); !strings.HasPrefix(line, "250") {
+		t.Fatal("expected 250 to RSET, got:", line)
+	}
+	if line := smtpCmd(t, w, r, "XCLIENT ADDR=203.0.113.9"); !strings.HasPrefix(line, "503 5.5.1 ") {
+		t.Error("expected 503 5.5.1 for XCLIENT after the session's XCLIENT was used, got:", line)
+	}
+	if client.RemoteIP != "192.0.2.10" {
+		t.Error("RemoteIP must be unchanged, but got:", client.RemoteIP)
+	}
+	xclientQuit(t, w, r, wg)
+}
+
+// Only peers listed in XClientAuthorizedHosts may use XCLIENT. An empty list
+// keeps the pre-existing behaviour of trusting every peer.
+func TestXClientAuthorizedHosts(t *testing.T) {
+	cases := []struct {
+		name  string
+		peer  string
+		hosts []string
+		reply string
+	}{
+		{"empty list allows any peer", "203.0.113.50", nil, "250 2.1.0 OK"},
+		{"peer listed as address", "10.0.0.5", []string{"10.0.0.5"}, "250 2.1.0 OK"},
+		{"peer inside network", "10.1.2.3", []string{"192.0.2.1", "10.0.0.0/8"}, "250 2.1.0 OK"},
+		{"ipv6 peer inside network", "2001:db8::10", []string{"2001:db8::/32"}, "250 2.1.0 OK"},
+		{"peer not listed", "203.0.113.50", []string{"10.0.0.0/8", "192.0.2.1"}, "550 5.7.0 "},
+		{"ipv4 peer does not match ipv6 network", "10.0.0.5", []string{"2001:db8::/32"}, "550 5.7.0 "},
+		{"peer without a parseable address", "tcp", []string{"10.0.0.0/8"}, "550 5.7.0 "},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			defer cleanTestArtifacts(t)
+			sc := getMockServerConfig()
+			sc.XClientOn = true
+			sc.XClientAuthorizedHosts = c.hosts
+			w, r, client, wg := xclientSession(t, sc, c.peer)
+
+			line := smtpCmd(t, w, r, "XCLIENT ADDR=198.51.100.7 HELO=client.example.net")
+			if !strings.HasPrefix(line, c.reply) {
+				t.Errorf("expected %q, got %q", c.reply, line)
+			}
+			if strings.HasPrefix(c.reply, "250") {
+				if client.RemoteIP != "198.51.100.7" {
+					t.Error("RemoteIP should be 198.51.100.7, but got:", client.RemoteIP)
+				}
+			} else if client.RemoteIP != c.peer {
+				t.Error("RemoteIP must be unchanged for an unauthorized peer, but got:", client.RemoteIP)
+			}
+			xclientQuit(t, w, r, wg)
+		})
+	}
 }
 
 func TestProxy(t *testing.T) {

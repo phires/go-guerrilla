@@ -341,6 +341,90 @@ func (s *server) allowsIp(ip net.IP) bool {
 	return s.allowsHost("[" + ipStr + "]")
 }
 
+// parseIPOrPrefix parses a single IP address or a CIDR network into a prefix.
+func parseIPOrPrefix(s string) (netip.Prefix, error) {
+	if strings.Contains(s, "/") {
+		return netip.ParsePrefix(s)
+	}
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	return netip.PrefixFrom(addr, addr.BitLen()), nil
+}
+
+// xclientPeerAuthorized reports whether peer, an IP address, may use the XCLIENT
+// command. An empty authorized list allows every peer; otherwise the peer must be
+// covered by one of the listed addresses or networks. Entries that do not parse
+// (Validate rejects them at config load) never match.
+func xclientPeerAuthorized(authorized []string, peer string) bool {
+	if len(authorized) == 0 {
+		return true
+	}
+	addr, err := netip.ParseAddr(peer)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap().WithZone("")
+	for _, h := range authorized {
+		if prefix, err := parseIPOrPrefix(h); err == nil && prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseXClient parses the attribute list of an XCLIENT command (everything after the
+// verb) and returns the client address and HELO name it carries, each empty when the
+// attribute is absent or [UNAVAILABLE]/[TEMPUNAVAIL]. Attributes we do not use (NAME,
+// PORT, PROTO, LOGIN, DESTADDR, DESTPORT) and tokens without a '=' are ignored. An
+// error means nothing from the command may be applied.
+func parseXClient(attrs []byte) (remoteIP string, helo string, err error) {
+	for _, tok := range bytes.Split(attrs, []byte{' '}) {
+		vals := bytes.SplitN(tok, []byte{'='}, 2)
+		if len(vals) != 2 {
+			continue
+		}
+		name, value := bytes.ToUpper(vals[0]), vals[1]
+		if bytes.Equal(value, []byte("[UNAVAILABLE]")) || bytes.Equal(value, []byte("[TEMPUNAVAIL]")) {
+			continue
+		}
+		switch string(name) {
+		case "ADDR":
+			if remoteIP, err = parseXClientAddr(value); err != nil {
+				return "", "", fmt.Errorf("XCLIENT ADDR: %w", err)
+			}
+		case "HELO":
+			// the same parser the EHLO command goes through: a domain or an address literal
+			var p rfc5321.Parser
+			if helo, _, err = p.Ehlo(append([]byte{' '}, value...)); err != nil {
+				return "", "", fmt.Errorf("XCLIENT HELO %q: %w", value, err)
+			}
+		}
+	}
+	return remoteIP, helo, nil
+}
+
+// parseXClientAddr validates the value of an XCLIENT ADDR attribute: an IPv4 address,
+// or an IPv6 address optionally carrying the "IPV6:" prefix the XCLIENT spec
+// prescribes. The address is returned in canonical form.
+func parseXClientAddr(value []byte) (string, error) {
+	const ipv6Prefix = "IPV6:"
+	wantV6 := len(value) >= len(ipv6Prefix) && strings.EqualFold(string(value[:len(ipv6Prefix)]), ipv6Prefix)
+	if wantV6 {
+		value = value[len(ipv6Prefix):]
+	}
+	addr, err := netip.ParseAddr(string(value))
+	if err != nil {
+		return "", err
+	}
+	addr = addr.Unmap().WithZone("")
+	if wantV6 && !addr.Is6() {
+		return "", fmt.Errorf("IPV6: prefix on an IPv4 address %s", addr)
+	}
+	return addr.String(), nil
+}
+
 const commandSuffix = "\r\n"
 
 // Reads from the client until a \n terminator is encountered,
@@ -591,25 +675,39 @@ func (s *server) handleClient(client *client) {
 				client.sendResponse("214-OK\r\n", quote)
 
 			case sc.XClientOn && cmdXCLIENT.match(cmd):
-				// the client may send the bare verb, without the separator that
-				// precedes the attribute list, leaving nothing to parse
-				if len(input) > len(cmdXCLIENT) {
-					if toks := bytes.Split(input[len(cmdXCLIENT)+1:], []byte{' '}); len(toks) > 0 {
-						for i := range toks {
-							if vals := bytes.Split(toks[i], []byte{'='}); len(vals) == 2 {
-								if bytes.Equal(vals[1], []byte("[UNAVAILABLE]")) {
-									// skip
-									continue
-								}
-								if bytes.Equal(vals[0], []byte("ADDR")) {
-									client.RemoteIP = string(vals[1])
-								}
-								if bytes.Equal(vals[0], []byte("HELO")) {
-									client.Helo = string(vals[1])
-								}
-							}
-						}
-					}
+				// XCLIENT (https://www.postfix.org/XCLIENT_README.html) lets a proxy such as
+				// nginx hand us the address and HELO of the client it is fronting. Whatever
+				// it sends becomes the Received header, the log entry and the SPF input, so
+				// like the PROXY header it is only honoured from an authorized peer, once per
+				// session, outside a mail transaction, and only when every attribute parses.
+				if !xclientPeerAuthorized(sc.XClientAuthorizedHosts, client.RemoteIP) {
+					s.log().Warnf("XCLIENT from unauthorized peer %s, client id %d", client.RemoteIP, client.ID)
+					client.sendResponse(r.FailXClientNotAuthorized)
+					break
+				}
+				if client.xclientReceived {
+					s.log().Warnf("Repeated XCLIENT from %s, client id %d", client.RemoteIP, client.ID)
+					client.sendResponse(r.FailXClientAlreadyReceived)
+					break
+				}
+				client.xclientReceived = true
+				if client.isInTransaction() {
+					s.log().Warnf("XCLIENT inside a mail transaction from %s, client id %d", client.RemoteIP, client.ID)
+					client.sendResponse(r.FailXClientInTransaction)
+					break
+				}
+				remoteIP, helo, err := parseXClient(input[len(cmdXCLIENT):])
+				if err != nil {
+					s.log().WithError(err).Warnf("Invalid XCLIENT from %s, client id %d", client.RemoteIP, client.ID)
+					client.sendResponse(r.FailSyntaxError)
+					break
+				}
+				if remoteIP != "" {
+					s.log().Infof("XCLIENT from %s: client address is %s", client.RemoteIP, remoteIP)
+					client.RemoteIP = remoteIP
+				}
+				if helo != "" {
+					client.Helo = helo
 				}
 				client.sendResponse(r.SuccessMailCmd)
 
