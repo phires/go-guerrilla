@@ -378,3 +378,42 @@ func TestConfigChangeEvents(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// xclient_authorized_hosts takes IP addresses and CIDR networks; anything else
+// must be rejected when the config is loaded, not when the first XCLIENT arrives.
+func TestXClientAuthorizedHostsConfig(t *testing.T) {
+	load := func(hosts string) (*AppConfig, error) {
+		ac := &AppConfig{}
+		err := ac.Load([]byte(`{
+			"log_file": "./tests/testlog",
+			"servers": [{
+				"is_enabled": true,
+				"listen_interface": "127.0.0.1:2526",
+				"xclient_on": true,
+				"xclient_authorized_hosts": ` + hosts + `
+			}]
+		}`))
+		return ac, err
+	}
+
+	ac, err := load(`["10.0.0.5", "192.0.2.0/24", "2001:db8::/32"]`)
+	if err != nil {
+		t.Fatal("valid xclient_authorized_hosts rejected:", err)
+	}
+	if got := strings.Join(ac.Servers[0].XClientAuthorizedHosts, ","); got != "10.0.0.5,192.0.2.0/24,2001:db8::/32" {
+		t.Error("xclient_authorized_hosts not loaded, got:", got)
+	}
+
+	for _, hosts := range []string{
+		`["10.0.0.5", "proxy.example.net"]`,
+		`["10.0.0.0/33"]`,
+		`["fe80::1%eth0/64"]`,
+		`[""]`,
+	} {
+		if _, err := load(hosts); err == nil {
+			t.Errorf("expected %s to be rejected", hosts)
+		} else if !strings.Contains(err.Error(), "xclient_authorized_hosts") {
+			t.Errorf("error for %s should name xclient_authorized_hosts, got: %v", hosts, err)
+		}
+	}
+}
